@@ -1,2 +1,0 @@
-[788] DicoEvent.postman_environment.json
-[788] Dico Event-versi-1.postman_collection.json
