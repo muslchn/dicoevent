@@ -1,0 +1,21 @@
+✓ [788] DicoEvent versi 1
+&gt;
+[Mandatory] Users
+&gt;
+[Mandatory] Groups
+&gt;
+[Mandatory] Admin
+[Mandatory] Events
+&gt;
+&gt;
+7
+&gt;
+&gt;
+&gt;
+&gt;
+| [Mandatory] Tickets
+[Mandatory] Registrations
+[Mandatory] Payments
+[No test] Cleaning resources
+[Optional] Events
+[Optional] Organizer

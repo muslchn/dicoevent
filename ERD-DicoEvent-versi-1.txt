@@ -1,0 +1,87 @@
+# Entity Relationship Diagram (ERD) - DicoEvent Version 1
+
+## Entities and Relationships
+
+### 1. Users
+- **Primary Key**: id (UUID)
+- **Attributes**: username, email (UNIQUE), role, first_name, last_name, phone_number, created_at, updated_at
+- **Relationships**: 
+  - One-to-Many with Events (organizer)
+  - One-to-Many with Registrations
+  - One-to-Many with Payments
+
+### 2. Events
+- **Primary Key**: id (UUID)
+- **Foreign Key**: organizer (references Users.id)
+- **Attributes**: title, description, venue, address, city, country, start_date, end_date, capacity, price, status, image, created_at, updated_at
+- **Relationships**:
+  - Many-to-One with Users (organizer)
+  - One-to-Many with TicketTypes
+  - One-to-Many with Registrations
+
+### 3. TicketTypes
+- **Primary Key**: id (UUID)
+- **Foreign Key**: event (references Events.id)
+- **Attributes**: name, description, price, quantity, sold, is_active, created_at, updated_at
+- **Relationships**:
+  - Many-to-One with Events
+  - One-to-Many with Tickets
+  - One-to-Many with Registrations
+
+### 4. Tickets
+- **Primary Key**: id (UUID)
+- **Foreign Key**: ticket_type (references TicketTypes.id)
+- **Attributes**: code (UNIQUE), issued_at, is_used, used_at
+- **Relationships**:
+  - Many-to-One with TicketTypes
+
+### 5. Registrations
+- **Primary Key**: id (UUID)
+- **Foreign Keys**: 
+  - user (references Users.id)
+  - event (references Events.id)
+  - ticket_type (references TicketTypes.id)
+- **Attributes**: status, payment_status, quantity, total_amount, attendee_name, attendee_email, attendee_phone, special_requirements, registered_at, updated_at
+- **Relationships**:
+  - Many-to-One with Users
+  - Many-to-One with Events
+  - Many-to-One with TicketTypes
+  - One-to-One with Payments
+
+### 6. Payments
+- **Primary Key**: id (UUID)
+- **Foreign Key**: registration (references Registrations.id)
+- **Foreign Key**: user (references Users.id)
+- **Attributes**: amount, currency, status, payment_method, transaction_id, gateway_response, initiated_at, processed_at, completed_at, refunded_amount, refund_reason, refunded_at
+- **Relationships**:
+  - One-to-One with Registrations
+  - Many-to-One with Users
+
+## Constraints
+
+### Database Constraints
+1. **Unique Constraints**:
+   - Users.email (UNIQUE)
+   - Tickets.code (UNIQUE)
+   - Registration.user+event combination (UNIQUE)
+
+2. **Check Constraints**:
+   - Event.end_date > Event.start_date
+   - Event.capacity > 0
+   - TicketType.price >= 0
+   - TicketType.quantity > 0
+   - TicketType.sold >= 0
+   - TicketType.sold <= TicketType.quantity
+   - Registration.quantity > 0
+   - Registration.total_amount >= 0
+   - Payment.amount > 0
+   - Payment.refunded_amount > 0 (when not NULL)
+
+### Business Rules
+1. Users cannot register for their own events
+2. Events must have available capacity for new registrations
+3. Ticket types must belong to their respective events
+4. Only available ticket quantities can be purchased
+5. Payments can only be made for pending or confirmed registrations
+6. Refunds can only be processed for completed payments
+7. Event status transitions follow specific business logic
