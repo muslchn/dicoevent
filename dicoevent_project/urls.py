@@ -15,14 +15,25 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from users import views as user_views
+from rest_framework_simplejwt.views import TokenRefreshView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('api/', include([
-        path('', include('users.urls')),
-        path('', include('events.urls')),
-        path('', include('tickets.urls')),
-        path('', include('registrations.urls')),
-        path('', include('payments.urls')),
-    ])),
+    path('api/users/', include('users.urls')),
+    path('api/events/', include('events.urls')),
+    path('api/tickets/', include('tickets.urls')),
+    path('api/registrations/', include('registrations.urls')),
+    path('api/payments/', include('payments.urls')),
+    # Direct authentication endpoints for tests
+    path('api/register/', user_views.register_user),
+    path('api/login/', user_views.login_user),
+    # JWT token endpoints - both paths for compatibility
+    path('api/token/', TokenRefreshView.as_view(), name='token_obtain_pair'),  # For Postman tests
+    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+    # Direct group management endpoints
+    path('api/groups/', user_views.GroupListCreateView.as_view()),
+    path('api/groups/<int:pk>/', user_views.GroupDetailView.as_view()),
+    # User-group assignment endpoint
+    path('api/assign-roles/', user_views.assign_user_to_group, name='assign-roles'),
 ]

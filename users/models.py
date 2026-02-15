@@ -2,6 +2,22 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 import uuid
 
+class Group(models.Model):
+    """Group/Organization model for managing event organizers"""
+    
+    id = models.AutoField(primary_key=True)
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        db_table = 'groups'
+        verbose_name = 'Group'
+        verbose_name_plural = 'Groups'
+    
+    def __str__(self):
+        return self.name
 
 class User(AbstractUser):
     """Custom User model with roles for DicoEvent"""

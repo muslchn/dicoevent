@@ -27,6 +27,12 @@ class RegistrationListCreateView(generics.ListCreateAPIView):
     ordering_fields = ['registered_at', 'updated_at']
     ordering = ['-registered_at']
     
+    def list(self, request, *args, **kwargs):
+        """Override to return array directly instead of paginated response"""
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
     def get_queryset(self):
         queryset = Registration.objects.all()
         

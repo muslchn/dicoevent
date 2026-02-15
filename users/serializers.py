@@ -6,19 +6,12 @@ from .models import User
 class UserRegistrationSerializer(serializers.ModelSerializer):
     """Serializer for user registration"""
     password = serializers.CharField(write_only=True, min_length=8)
-    password_confirm = serializers.CharField(write_only=True, min_length=8)
     
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'password', 'password_confirm', 'first_name', 'last_name', 'phone_number']
-    
-    def validate(self, attrs):
-        if attrs['password'] != attrs['password_confirm']:
-            raise serializers.ValidationError("Passwords don't match")
-        return attrs
+        fields = ['id', 'username', 'email', 'password', 'first_name', 'last_name', 'phone_number']
     
     def create(self, validated_data):
-        validated_data.pop('password_confirm')
         password = validated_data.pop('password')
         user = User(**validated_data)
         user.set_password(password)
@@ -73,3 +66,5 @@ class UserRoleUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['role']
+
+

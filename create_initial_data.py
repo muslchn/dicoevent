@@ -21,6 +21,10 @@ def create_initial_users():
             first_name='Aras',
             last_name='Admin'
         )
+        # Make this user a Django superuser
+        superuser.is_superuser = True
+        superuser.is_staff = True
+        superuser.save()
         print(f"Created superuser: {superuser.username}")
     
     # Create regular user

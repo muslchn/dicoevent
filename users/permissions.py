@@ -5,9 +5,13 @@ class IsAdminOrSuperUser(permissions.BasePermission):
     """Allow access only to admin or superuser"""
     
     def has_permission(self, request, view):
-        return request.user.is_authenticated and (
-            request.user.is_admin() or request.user.is_superuser_role()
-        )
+        # Check if user is authenticated and has admin or superuser role
+        is_authenticated = request.user.is_authenticated
+        is_admin_role = hasattr(request.user, 'is_admin') and request.user.is_admin()
+        is_superuser_role = hasattr(request.user, 'is_superuser_role') and request.user.is_superuser_role()
+        is_builtin_superuser = getattr(request.user, 'is_superuser', False)
+        
+        return is_authenticated and (is_admin_role or is_superuser_role or is_builtin_superuser)
 
 
 class IsOwnerOrAdmin(permissions.BasePermission):

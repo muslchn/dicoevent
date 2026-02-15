@@ -28,6 +28,12 @@ class PaymentListCreateView(generics.ListCreateAPIView):
     ordering_fields = ['initiated_at', 'completed_at', 'amount']
     ordering = ['-initiated_at']
     
+    def list(self, request, *args, **kwargs):
+        """Override to return array directly instead of paginated response"""
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
     def get_queryset(self):
         queryset = Payment.objects.all()
         

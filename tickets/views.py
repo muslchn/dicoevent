@@ -29,6 +29,12 @@ class TicketTypeListCreateView(generics.ListCreateAPIView):
     ordering_fields = ['price', 'created_at']
     ordering = ['-created_at']
     
+    def list(self, request, *args, **kwargs):
+        """Override to return array directly instead of paginated response"""
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+    
     def get_serializer_class(self):
         if self.request.method == 'POST':
             return TicketTypeCreateSerializer
@@ -125,6 +131,12 @@ class TicketListView(generics.ListAPIView):
     filterset_fields = ['ticket_type', 'is_used']
     ordering_fields = ['issued_at', 'used_at']
     ordering = ['-issued_at']
+    
+    def list(self, request, *args, **kwargs):
+        """Override to return array directly instead of paginated response"""
+        queryset = self.filter_queryset(self.get_queryset())
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 @api_view(['GET'])

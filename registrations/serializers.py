@@ -95,7 +95,7 @@ class RegistrationUpdateSerializer(RegistrationSerializer):
         read_only_fields = [
             'id', 'user', 'user_detail', 'event', 'event_detail', 
             'ticket_type', 'ticket_type_detail', 'total_amount', 
-            'registered_at', 'updated_at'
+            'registered_at', 'updated_at', 'attendee_name', 'attendee_email', 'attendee_phone'
         ]
 
 
