@@ -336,3 +336,6 @@ local/
 DicoEvent_Versi_1_Postman/
 submission/
 review/
+docs/
+Makefile
+newman/

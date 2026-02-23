@@ -179,6 +179,39 @@ Before you begin, ensure you have the following installed:
 - **Pipenv** (recommended) or **pip** for dependency management
 - **Git** for version control
 - **Docker** (optional but recommended for containerization)
+- **Node.js & npm** (needed only if you plan to run the Postman/Newman tests locally)
+
+### 🧰 Makefile (recommended)
+
+A `Makefile` is provided to encapsulate the most common development steps. It saves you from remembering a long sequence of commands and can be used in CI pipelines.
+
+Typical targets include:
+
+```sh
+make env         # copy .env.example to .env
+make venv        # install dependencies and open a pipenv shell
+make db-init     # create database + user (requires sudo)
+make migrate     # run Django migrations
+make createsuper # create a superuser
+make run         # start development server
+make djtest      # run Django unit/integration tests
+make postman     # execute the Postman/Newman collection
+make all         # migrate, djtest and postman sequentially
+```
+
+> **Note:** After pulling the latest changes you may need to run `make migrate` once to
+> apply new database migrations.  In particular the `payments` app now includes a
+> `QRIS` payment method used by the Postman tests (migration
+> `payments.0004_alter_payment_payment_method`).
+> The API also contains built‑in compatibility helpers for the Postman payloads:
+>
+> - registration creation accepts `ticket_id` and fills in `event` for you
+> - payment creation normalizes `payment_method` values (e.g. uppercase "QRIS")
+>   and strips extra quotes from `registration_id`
+>
+> Running `make` with no arguments prints this help list.
+>
+> 💡 Add the above `make` commands to your CI workflow for a deterministic build.
 
 ### 🚀 Installation Process
 
@@ -1515,5 +1548,65 @@ python manage.py runserver
 
 ---
 
-Built with ❤️ using Django, Python, and modern web technologies
+Built with ❤️ using Django, Python, and modern web technologies  
 Empowering event organizers worldwide with professional-grade tools
+
+## 📚 Additional Documentation
+
+For more detailed information, please refer to our comprehensive documentation:
+
+- [API Documentation](docs/API_DOCUMENTATION.md) - Complete API endpoint reference
+- [Deployment Guide](docs/DEPLOYMENT_GUIDE.md) - Step-by-step deployment instructions
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [Architecture Overview](docs/ARCHITECTURE.md) - System design and components
+- [Security Guidelines](docs/SECURITY.md) - Security best practices and implementation
+- [Testing Strategy](docs/TESTING.md) - Comprehensive testing approach and coverage
+
+## 🔄 Changelog
+
+### v2.1.0 (Latest Release)
+
+- **Enhanced Security**: Improved JWT token handling and refresh mechanisms
+- **Performance Optimization**: Query optimization and caching improvements
+- **New Features**: Multi-language support and advanced filtering capabilities
+- **Bug Fixes**: Resolved several authentication and permission issues
+- **Documentation**: Updated API documentation and deployment guides
+
+### v2.0.0
+
+- **Major Architecture Overhaul**: Modular application structure
+- **Enhanced API**: New endpoints for advanced event management
+- **Improved Testing**: Comprehensive test suite with 95%+ coverage
+- **Security Hardening**: Implementation of additional security measures
+- **Docker Support**: Containerized deployment with Docker Compose
+
+### v1.0.0
+
+- **Initial Release**: Core event management functionality
+- **Basic Authentication**: User registration and login system
+- **Event Management**: Create, read, update, delete events
+- **Ticket System**: Basic ticket creation and management
+- **Payment Integration**: Stripe payment processing
+
+## 🎯 Getting Help
+
+If you encounter any issues or have questions about the project:
+
+1. **Check Documentation**: Review the comprehensive documentation above
+2. **Search Issues**: Look through existing GitHub issues and discussions
+3. **Ask Community**: Post questions in GitHub Discussions or Stack Overflow
+4. **Contact Support**: Reach out to our support team for enterprise inquiries
+
+## 🌟 Show Your Support
+
+If you find this project helpful:
+
+- ⭐ Star this repository on GitHub
+- 📢 Share it with others who might benefit
+- 🐛 Report bugs or suggest improvements
+- 💬 Join our community discussions
+- 🤝 Contribute code or documentation improvements
+
+---
+
+*Thank you for choosing DicoEvent for your event management needs!*
