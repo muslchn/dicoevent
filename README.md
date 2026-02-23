@@ -433,7 +433,7 @@ Content-Type: application/json
     "first_name": "John",
     "last_name": "Doe",
     "role": "user",
-    "date_joined": "2024-01-15T10:30:00Z"
+    "date_joined": "2026-01-15T10:30:00Z"
   }
 }
 ```
@@ -496,8 +496,8 @@ Authorization: Bearer <access_token>
   "last_name": "Doe",
   "bio": "Software developer passionate about event technology",
   "avatar": "https://cdn.example.com/avatars/john_doe.jpg",
-  "date_joined": "2024-01-15T10:30:00Z",
-  "last_login": "2024-01-20T14:22:30Z",
+  "date_joined": "2026-01-15T10:30:00Z",
+  "last_login": "2026-01-20T14:22:30Z",
   "role": "user"
 }
 ```
@@ -527,10 +527,10 @@ Authorization: Bearer <access_token>
 Content-Type: application/json
 
 {
-  "title": "Tech Conference 2024",
+  "title": "Tech Conference 2026",
   "description": "Annual technology conference featuring industry leaders",
-  "start_date": "2024-06-15T09:00:00Z",
-  "end_date": "2024-06-17T17:00:00Z",
+  "start_date": "2026-06-15T09:00:00Z",
+  "end_date": "2026-06-17T17:00:00Z",
   "location": {
     "venue_name": "Convention Center",
     "address": "123 Tech Boulevard",
@@ -543,7 +543,7 @@ Content-Type: application/json
   "price": "299.99",
   "categories": ["Technology", "Networking"],
   "is_published": true,
-  "registration_deadline": "2024-06-10T23:59:59Z"
+  "registration_deadline": "2026-06-10T23:59:59Z"
 }
 ```
 
@@ -569,8 +569,8 @@ Content-Type: application/json
   "description": "Limited early bird tickets with 20% discount",
   "price": "239.99",
   "quantity": 100,
-  "sale_start": "2024-01-01T00:00:00Z",
-  "sale_end": "2024-03-31T23:59:59Z",
+  "sale_start": "2026-01-01T00:00:00Z",
+  "sale_end": "2026-03-31T23:59:59Z",
   "is_active": true
 }
 ```
@@ -587,7 +587,7 @@ Authorization: Bearer <access_token>
 ```json
 {
   "ticket_id": "ABC123XYZ",
-  "event_title": "Tech Conference 2024",
+  "event_title": "Tech Conference 2026",
   "attendee_name": "John Doe",
   "ticket_type": "VIP Pass",
   "status": "valid",
@@ -1197,8 +1197,8 @@ class TestEventAPI:
         data = {
             'title': 'Test Event',
             'description': 'Test Description',
-            'start_date': '2024-12-01T10:00:00Z',
-            'end_date': '2024-12-01T18:00:00Z',
+            'start_date': '2026-12-01T10:00:00Z',
+            'end_date': '2026-12-01T18:00:00Z',
             'capacity': 100
         }
         
@@ -1357,21 +1357,21 @@ For security issues, please contact <security@dicoevent.com> with:
 
 ## 📈 Roadmap & Future Enhancements
 
-### Q1 2024 - Current Focus
+### Q1 2026 - Current Focus
 
 - [x] **Mobile Application**: Native iOS and Android apps
 - [x] **Advanced Analytics**: Real-time dashboards and custom reporting
 - [ ] **Multi-language Support**: i18n implementation for global reach
 - [ ] **Social Media Integration**: Direct sharing and social login options
 
-### Q2 2024 - Near Term
+### Q2 2026 - Near Term
 
 - [ ] **AI Recommendations**: Machine learning powered event suggestions
 - [ ] **Advanced Notifications**: Push notifications and webhook system
 - [ ] **Enhanced Reporting**: Export capabilities and data visualization
 - [ ] **Calendar Integration**: Google Calendar, Outlook, and Apple Calendar sync
 
-### Q3 2024 - Mid-term Vision
+### Q3 2026 - Mid-term Vision
 
 - [ ] **Virtual Events**: Live streaming and virtual attendance features
 - [ ] **Blockchain Tickets**: Immutable ticket verification and transfer
@@ -1380,7 +1380,7 @@ For security issues, please contact <security@dicoevent.com> with:
 
 ### Long-term Strategic Goals
 
-#### 2025+ Horizons
+#### 2027+ Horizons
 
 - **Predictive Analytics**: Demand forecasting and pricing optimization
 - **Marketplace Platform**: Third-party vendor and service integration
@@ -1411,7 +1411,7 @@ This project is submitted as part of Dicoding's educational program and follows 
 ### Intellectual Property Notice
 
 ```text
-Copyright (c) 2024 DicoEvent Project
+Copyright (c) 2026 DicoEvent Project
 All rights reserved.
 
 This software is provided "as is" without warranty of any kind,
