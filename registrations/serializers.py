@@ -54,15 +54,6 @@ class RegistrationSerializer(serializers.ModelSerializer):
         ticket_type = attrs.get("ticket_type")
         quantity = attrs.get("quantity", 1)
 
-        # Check if user is trying to register for their own event
-        # Superusers and admins should be able to register regardless of organizer
-        if event and event.organizer == user:
-            # allow bypass for elevated roles
-            if not (user.is_superuser_role() or user.is_admin()):
-                raise serializers.ValidationError(
-                    "You cannot register for your own event"
-                )
-
         # Check if event has available capacity
         if event and event.is_full():
             raise serializers.ValidationError("Event has reached maximum capacity")

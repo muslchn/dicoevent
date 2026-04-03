@@ -69,7 +69,7 @@ class EventListCreateView(generics.ListCreateAPIView):
                 data["start_date"] = datetime.strptime(
                     start_time_str, "%Y-%m-%d %H:%M"
                 ).isoformat()
-            except:
+            except ValueError:
                 data["start_date"] = start_time_str
         if "end_time" in data:
             end_time_str = data.pop("end_time")
@@ -78,7 +78,7 @@ class EventListCreateView(generics.ListCreateAPIView):
                 data["end_date"] = datetime.strptime(
                     end_time_str, "%Y-%m-%d %H:%M"
                 ).isoformat()
-            except:
+            except ValueError:
                 data["end_date"] = end_time_str
         if "organizer_id" in data:
             data.pop("organizer_id")
@@ -179,7 +179,7 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
                 data["start_date"] = datetime.strptime(
                     start_time_str, "%Y-%m-%d %H:%M"
                 ).isoformat()
-            except:
+            except ValueError:
                 data["start_date"] = start_time_str
         if "end_time" in data:
             end_time_str = data.pop("end_time")
@@ -187,7 +187,7 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
                 data["end_date"] = datetime.strptime(
                     end_time_str, "%Y-%m-%d %H:%M"
                 ).isoformat()
-            except:
+            except ValueError:
                 data["end_date"] = end_time_str
 
         # ignore organizer_id on update so it doesn't trigger validation errors

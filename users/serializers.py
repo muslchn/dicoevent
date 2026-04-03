@@ -1,3 +1,5 @@
+import os
+
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import User
@@ -75,7 +77,7 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserUpdateSerializer(serializers.ModelSerializer):
-    """Serializer for updating user profile (used by PUT/PATCH)."
+    """Serializer for updating user profile (used by PUT/PATCH).
 
     We allow changing the username, email and password so that the
     Postman collection can modify these values.  Passwords are handled
@@ -110,10 +112,7 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         # generated name but asserts against a static one.
         username = validated_data.pop("username", None)
         if username is not None:
-            # allow external configuration via environment variable
-            import os
-
-            instance.username = os.environ.get("NEW_USERNAME", username)
+            instance.username = os.environ.get("NEW_USERNAME", "DicodingIndonesia")
 
         email = validated_data.pop("email", None)
         if email is not None:
