@@ -21,7 +21,7 @@ This README is intentionally limited to what is implemented in this repository t
 - `django-filter`
 - Newman for Postman collection execution
 
-Installed Python dependencies are defined in [requirements.txt](/home/scc617/codes/dicoding/dicoevent/requirements.txt).
+Installed Python dependencies are defined in [requirements.txt](requirements.txt).
 
 ## Project Layout
 
@@ -39,6 +39,8 @@ dicoevent/
 ├── create_initial_data.py
 ├── initialize_test_data.py
 ├── setup_test_data.py
+├── test-suite.sh
+├── report-tests.sh
 ├── manage.py
 ├── Makefile
 ├── Pipfile
@@ -49,9 +51,9 @@ dicoevent/
 
 Notes:
 
-- The active Django settings module is [dicoevent_project/settings.py](/home/scc617/codes/dicoding/dicoevent/dicoevent_project/settings.py).
+- The active Django settings module is [dicoevent_project/settings.py](dicoevent_project/settings.py).
 - There is no root-level `docker-compose.yml` in this repository.
-- The Postman collection is kept under [DicoEvent_Versi_1_Postman](/home/scc617/codes/dicoding/dicoevent/DicoEvent_Versi_1_Postman).
+- The Postman collection is kept under [DicoEvent_Versi_1_Postman](DicoEvent_Versi_1_Postman).
 
 ## Prerequisites
 
@@ -89,7 +91,7 @@ POSTMAN_PORT=8000
 NEW_USERNAME=DicodingIndonesia
 ```
 
-The source template is [/.env.example](/home/scc617/codes/dicoding/dicoevent/.env.example).
+The source template is [.env.example](.env.example).
 
 ## Database Setup
 
@@ -150,9 +152,9 @@ make run
 
 This repository contains three seed helpers:
 
-- [create_initial_data.py](/home/scc617/codes/dicoding/dicoevent/create_initial_data.py): baseline local users
-- [initialize_test_data.py](/home/scc617/codes/dicoding/dicoevent/initialize_test_data.py): deterministic dataset for Newman collection runs
-- [setup_test_data.py](/home/scc617/codes/dicoding/dicoevent/setup_test_data.py): broader sample dataset for manual/API testing
+- [create_initial_data.py](create_initial_data.py): baseline local users
+- [initialize_test_data.py](initialize_test_data.py): deterministic dataset for Newman collection runs
+- [setup_test_data.py](setup_test_data.py): broader sample dataset for manual/API testing
 
 These scripts are idempotent and can be run repeatedly without duplicating their seeded records.
 
@@ -170,11 +172,21 @@ or:
 make djtest
 ```
 
+Run the full local API validation workflow (database reset, seed, server startup, Newman run, summary):
+
+```bash
+./test-suite.sh
+```
+
+Generate a standalone summary from the latest Newman JSON report:
+
+```bash
+./report-tests.sh
+```
+
 ## Newman / Postman
 
-Start the Django server first in one shell.
-
-In another shell, run:
+Run the collection through the Make target:
 
 ```bash
 make postman
@@ -183,10 +195,12 @@ make postman
 What `make postman` does:
 
 1. flushes the database
-2. runs [initialize_test_data.py](/home/scc617/codes/dicoding/dicoevent/initialize_test_data.py)
-3. executes [scripts/run_newman.py](/home/scc617/codes/dicoding/dicoevent/scripts/run_newman.py)
+2. runs [initialize_test_data.py](initialize_test_data.py)
+3. executes [scripts/run_newman.py](scripts/run_newman.py)
 
 The Newman wrapper uses a temporary copy of the checked-in Postman collection so `{{host}}` and `{{port}}` placeholders inside embedded `pm.sendRequest(...)` scripts resolve correctly without modifying the original Postman files.
+
+Best-practice rule for this repository: do not edit files inside [DicoEvent_Versi_1_Postman](DicoEvent_Versi_1_Postman) to fix runtime variable resolution.
 
 You can also run the wrapper directly:
 
@@ -207,11 +221,11 @@ make djtest
 make postman
 ```
 
-The source for these commands is [Makefile](/home/scc617/codes/dicoding/dicoevent/Makefile).
+The source for these commands is [Makefile](Makefile).
 
 ## Documentation
 
-Additional project documentation is available under [docs](/home/scc617/codes/dicoding/dicoevent/docs).
+Additional project documentation is available under [docs](docs).
 
 ## Current Scope
 
