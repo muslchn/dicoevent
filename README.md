@@ -71,7 +71,7 @@ cp .env.example .env
 python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 ```
 
-The current application reads these variables:
+The Django application reads these variables:
 
 ```env
 DATABASE_NAME=dicoevent_production
@@ -85,6 +85,11 @@ DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 
 JWT_ACCESS_TOKEN_LIFETIME_HOURS=3
+```
+
+Local Newman helpers additionally use:
+
+```env
 
 POSTMAN_HOST=localhost
 POSTMAN_PORT=8000
@@ -131,10 +136,12 @@ pipenv shell
 or:
 
 ```bash
-python -m venv .venv
-source .venv/bin/activate
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
+
+If you plan to run [test-suite.sh](test-suite.sh), keep the virtual environment at `venv/` because that script currently resolves Python from `venv/bin/python`.
 
 Run the server:
 
@@ -178,6 +185,8 @@ Run the full local API validation workflow (database reset, seed, server startup
 ./test-suite.sh
 ```
 
+`./test-suite.sh` expects both [.env](.env) and a virtual environment at `venv/`.
+
 Generate a standalone summary from the latest Newman JSON report:
 
 ```bash
@@ -198,15 +207,21 @@ What `make postman` does:
 2. runs [initialize_test_data.py](initialize_test_data.py)
 3. executes [scripts/run_newman.py](scripts/run_newman.py)
 
-The Newman wrapper uses a temporary copy of the checked-in Postman collection so `{{host}}` and `{{port}}` placeholders inside embedded `pm.sendRequest(...)` scripts resolve correctly without modifying the original Postman files.
+Unlike [test-suite.sh](test-suite.sh), `make postman` does not start Django for you. Start the API server first, then run the target.
+
+The Python Newman wrapper uses a temporary copy of the checked-in Postman collection so `{{host}}` and `{{port}}` placeholders inside embedded `pm.sendRequest(...)` scripts resolve correctly, and so the user-update request stays aligned with the collection's `{{newUsername}}` assertion, without modifying the original Postman files.
 
 Best-practice rule for this repository: do not edit files inside [DicoEvent_Versi_1_Postman](DicoEvent_Versi_1_Postman) to fix runtime variable resolution.
+
+For the all-in-one local run, [test-suite.sh](test-suite.sh) uses the Node wrapper [run-newman-fixed.js](run-newman-fixed.js), which starts Django, runs Newman, and prints the parsed summary.
 
 You can also run the wrapper directly:
 
 ```bash
 python scripts/run_newman.py --timeout-request 60000
 ```
+
+The direct wrapper also expects the Django server to already be running.
 
 ## Useful Make Targets
 
