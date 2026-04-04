@@ -1,6 +1,5 @@
 """Integration tests for user-facing API flows."""
 
-import os
 from typing import Any, cast
 
 from django.test import TestCase
@@ -89,35 +88,24 @@ class UserApiTests(TestCase):
         self.assertIn("users", response_data)
         self.assertGreaterEqual(len(response_data["users"]), 2)
 
-    def test_user_update_uses_new_username_env_override(self):
+    def test_user_update_uses_request_username(self):
         self.api_client.force_authenticate(user=self.regular_user)
         user_detail_url = reverse("user-detail", kwargs={"pk": self.regular_user.pk})
-        original_username = self.regular_user.username
-        original_env = os.environ.get("NEW_USERNAME")
-        os.environ["NEW_USERNAME"] = "DicodingOverride"
-
-        try:
-            response = cast(
-                Response,
-                self.api_client.put(
-                    user_detail_url,
-                    {
-                        "username": "ignored-value",
-                        "email": "updated@example.com",
-                        "first_name": "Updated",
-                    },
-                    format="json",
-                ),
-            )
-        finally:
-            if original_env is None:
-                os.environ.pop("NEW_USERNAME", None)
-            else:
-                os.environ["NEW_USERNAME"] = original_env
+        response = cast(
+            Response,
+            self.api_client.put(
+                user_detail_url,
+                {
+                    "username": "updatedusername",
+                    "email": "updated@example.com",
+                    "first_name": "Updated",
+                },
+                format="json",
+            ),
+        )
 
         self.regular_user.refresh_from_db()
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertNotEqual(self.regular_user.username, original_username)
-        self.assertEqual(self.regular_user.username, "DicodingOverride")
+        self.assertEqual(self.regular_user.username, "updatedusername")
         self.assertEqual(self.regular_user.email, "updated@example.com")

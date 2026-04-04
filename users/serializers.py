@@ -1,5 +1,3 @@
-import os
-
 from rest_framework import serializers
 from django.contrib.auth import authenticate
 from .models import User
@@ -79,12 +77,9 @@ class UserSerializer(serializers.ModelSerializer):
 class UserUpdateSerializer(serializers.ModelSerializer):
     """Serializer for updating user profile (used by PUT/PATCH).
 
-    We allow changing the username, email and password so that the
-    Postman collection can modify these values.  Passwords are handled
-    specially (hashed) while username updates are adjusted based on an
-    environment variable (`NEW_USERNAME`) to keep the test expectations
-    deterministic.  By default the serializer will just update to the
-    provided value.
+    We allow changing the username, email and password so that clients
+    can update their profile. Passwords are handled specially (hashed)
+    while other fields are applied from request payload.
     """
 
     password = serializers.CharField(write_only=True, required=False, min_length=8)
@@ -103,22 +98,18 @@ class UserUpdateSerializer(serializers.ModelSerializer):
         ]
 
     def update(self, instance, validated_data):
-        # pop out password so we can call set_password
+        # Pop out password so we can call set_password.
         password = validated_data.pop("password", None)
 
-        # if a username is provided we may override it with a fixed value
-        # that matches the Postman environment (NEW_USERNAME) to keep the
-        # tests passing even though the collection uses a dynamically
-        # generated name but asserts against a static one.
         username = validated_data.pop("username", None)
         if username is not None:
-            instance.username = os.environ.get("NEW_USERNAME", "DicodingIndonesia")
+            instance.username = username
 
         email = validated_data.pop("email", None)
         if email is not None:
             instance.email = email
 
-        # ordinary fields
+        # Ordinary fields.
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 

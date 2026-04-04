@@ -178,8 +178,9 @@ try:
     if assertions_failed == 0 and tests_failed == 0:
         print("\033[1;32m✅ ALL TESTS PASSED (100% Success Rate)\033[0m")
         print()
-        print("The 7 RangeError warnings are Newman infrastructure issues in")
-        print("test cleanup/verification steps, NOT test assertion failures.")
+        if range_errors > 0:
+            print(f"The {range_errors} Newman infrastructure warning(s) occurred in")
+            print("test cleanup/verification steps, NOT test assertion failures.")
         print("All API tests and assertions executed successfully.")
         exit(0)
     else:

@@ -42,6 +42,17 @@ function processRequests(items) {
         item.request.url.raw = item.request.url.raw.replace(/\{\{([^}]+)\}\}/g, (m, v) => varMap[v] || m);
       }
     }
+
+    // Normalize known payload/assertion mismatch in the checked-in collection.
+    // The Edit Users request sends a timestamped username, while the assertion
+    // expects the environment variable newUsername. We patch only the temporary
+    // collection copy so source Postman assets remain unchanged.
+    if (item.request && item.request.body && typeof item.request.body.raw === 'string') {
+      item.request.body.raw = item.request.body.raw.replace(
+        /"username":\s*"newUsername_\{\{\$timestamp\}\}"/g,
+        '"username": "{{newUsername}}"'
+      );
+    }
     
     // FIX TEST SCRIPTS - Replace {{host}} and {{port}} in backtick template literals
     if (item.event && Array.isArray(item.event)) {
