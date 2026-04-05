@@ -47,6 +47,39 @@ def create_test_users():
     print("Creating test users...")
     User, _, _, _, _, _, _ = load_models()
 
+    # Compatibility users for checked-in Postman V2 environment variables.
+    # Keep these accounts in sync with environment defaults to avoid manual edits.
+    postman_superuser, created = ensure_user(
+        User,
+        username="Aras",
+        email="aras@dicoevent.com",
+        password="1234qwer!@#$",
+        first_name="Aras",
+        last_name="Superuser",
+        phone_number="+6281234567000",
+        role="superuser",
+    )
+    postman_superuser.is_superuser = True
+    postman_superuser.is_staff = True
+    postman_superuser.save(update_fields=["is_superuser", "is_staff"])
+    print(
+        f"{'Created' if created else 'Updated'} postman superuser: {postman_superuser.username}"
+    )
+
+    postman_user, created = ensure_user(
+        User,
+        username="dicoding",
+        email="dicoding@dicoevent.com",
+        password="1234qwer!@#$",
+        first_name="Dicoding",
+        last_name="User",
+        phone_number="+6281234567001",
+        role="user",
+    )
+    print(
+        f"{'Created' if created else 'Updated'} postman user: {postman_user.username}"
+    )
+
     # Create superuser
     superuser, created = ensure_user(
         User,
@@ -259,6 +292,8 @@ def main():
 
         print("\n✅ Test data setup completed successfully!")
         print("\nTest credentials:")
+        print("- Postman Superuser: Aras / 1234qwer!@#$")
+        print("- Postman User: dicoding / 1234qwer!@#$")
         print("- Superuser: superuser / superpassword123")
         print("- Admin: admin / adminpassword123")
         print("- Organizer: organizer / organizerpassword123")

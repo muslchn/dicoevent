@@ -6,26 +6,29 @@ DicoEvent is a Django REST API for event management. The current codebase provid
 - role-aware access control for users, organizers, admins, and superusers
 - event, ticket, registration, and payment endpoints
 - PostgreSQL-backed persistence
+- media file storage for event poster images
 - API request/response logging middleware with rotating log files
 - cache-backed read paths with namespace invalidation on write operations
 - optional Celery-compatible async task hooks (sync fallback when Celery worker is absent)
 - deterministic local seeding and Newman/Postman test execution
 
-This README is intentionally limited to what is implemented in this repository today.
+This README documents only what is implemented and active in this repository today.
 
 ## Technology Stack
 
-- Python 3.10+
-- Django 4.2
-- Django REST Framework
-- Simple JWT
-- PostgreSQL
-- `python-decouple` for environment variables
-- `django-filter`
-- `django-redis` (optional Redis cache backend)
-- Celery + Redis client packages (optional async worker backend)
-- `python-json-logger` (installed dependency)
-- Newman for Postman collection execution
+| Component | Detail |
+| --- | --- |
+| Python | 3.10 or newer |
+| Django | 4.2 |
+| Django REST Framework | API layer |
+| Simple JWT | Bearer token authentication |
+| PostgreSQL | Primary database |
+| `python-decouple` | Environment variable loading |
+| `django-filter` | Query filtering |
+| `django-redis` | Optional Redis cache backend |
+| Celery + Redis | Optional async task worker/broker |
+| `python-json-logger` | Structured log formatting |
+| Newman | Postman collection runner |
 
 Installed Python dependencies are defined in [requirements.txt](requirements.txt).
 
@@ -33,19 +36,23 @@ Installed Python dependencies are defined in [requirements.txt](requirements.txt
 
 ```text
 dicoevent/
-├── api/
-├── dicoevent_project/
-├── events/
-├── payments/
-├── registrations/
-├── tickets/
-├── users/
-├── docs/
-├── [788] DicoEvent Versi 1 Postman/
-├── [788] DicoEvent Versi 2 Postman/
+├── api/                              # Shared middleware, cache utils, celery compat
+├── dicoevent_project/                # Django project settings, urls, wsgi, asgi, celery
+├── events/                           # Events app (models, views, serializers, tasks)
+├── payments/                         # Payments app
+├── registrations/                    # Registrations app
+├── tickets/                          # Tickets and ticket types app
+├── users/                            # Custom user model, auth, group management
+├── docs/                             # Extended project documentation
+├── media/                            # Uploaded media files (event posters)
+├── test_uploads/                     # Fixture images for Newman file upload tests
+├── logs/                             # Rotating log files (generated at runtime)
+├── [788] DicoEvent Versi 1 Postman/  # Version 1 Postman collection and environment
+├── [788] DicoEvent Versi 2 Postman/  # Version 2 Postman collection and environment
 ├── create_initial_data.py
 ├── initialize_test_data.py
 ├── setup_test_data.py
+├── run-newman-fixed.js               # Node.js Newman wrapper (resolves template vars)
 ├── test-suite.sh
 ├── report-tests.sh
 ├── manage.py
@@ -53,38 +60,154 @@ dicoevent/
 ├── Pipfile
 ├── requirements.txt
 └── scripts/
-    └── run_newman.py
+    └── run_newman.py                 # Python Newman wrapper (portable, preferred)
 ```
 
 Notes:
 
 - The active Django settings module is [dicoevent_project/settings.py](dicoevent_project/settings.py).
+- Media uploads are stored under `media/` at the project root and served at `/media/` in development.
 - There is no root-level `docker-compose.yml` in this repository.
-- Postman assets are kept under [[788] DicoEvent Versi 1 Postman]([788]%20DicoEvent%20Versi%201%20Postman) and [[788] DicoEvent Versi 2 Postman]([788]%20DicoEvent%20Versi%202%20Postman).
+- Postman assets are kept under [[788] DicoEvent Versi 1 Postman]([788]%20DicoEvent%20Versi%201%20Postman) and [[788] DicoEvent Versi 2 Postman]([788]%20DicoEvent%20Versi%202%20Postman). Do not edit these files.
 
 ## Prerequisites
 
 - Python 3.10 or newer
 - PostgreSQL 13 or newer
-- `pip` or `pipenv`
-- Node.js with Newman installed if you want to run the Postman collection
+- `pipenv` (recommended) or `pip`
+- Node.js with Newman installed globally to run the Postman collection
 
-Optional Newman installation (global):
+Install Newman globally:
 
 ```bash
 npm install -g newman
 ```
 
+## User Roles
+
+The custom `User` model uses a four-level role hierarchy. Each role inherits the permissions of the roles below it.
+
+| Role | Description | Key permissions |
+| --- | --- | --- |
+| `user` | Regular attendee | Register for events, view own registrations and payments |
+| `organizer` | Event creator | All of the above, plus create/edit/publish/cancel own events, manage ticket types |
+| `admin` | Administrator | All organizer permissions plus manage all users and registrations, update payment status |
+| `superuser` | Platform superuser | All admin permissions plus assign roles, manage groups, full platform access |
+
+Role is stored in the `role` field of the `User` model. Django `is_staff` / `is_superuser` flags are also set for `admin` and `superuser` accounts respectively.
+
+## API Endpoints
+
+All endpoints are prefixed with `/api/`. Authentication uses a `Bearer <access_token>` header.
+
+### Authentication
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/register/` | None | Register a new user account |
+| `POST` | `/api/login/` | None | Obtain access + refresh token pair |
+| `POST` | `/api/token/` | None | Obtain or refresh token (unified endpoint) |
+| `POST` | `/api/token/refresh/` | None | Refresh an access token |
+
+### Users
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/users/` | Admin/Superuser | List all users |
+| `POST` | `/api/users/` | Admin/Superuser | Create a user |
+| `GET` | `/api/users/me/` | Authenticated | Get own profile |
+| `GET` | `/api/users/<id>/` | Admin/Superuser | Get a specific user |
+| `PUT/PATCH` | `/api/users/<id>/` | Authenticated (own) or Admin | Update user |
+| `DELETE` | `/api/users/<id>/` | Admin/Superuser | Delete user |
+| `PATCH` | `/api/users/<id>/role/` | Admin/Superuser | Update user role |
+| `POST` | `/api/assign-roles/` | Superuser | Assign user to a group |
+
+### Groups
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/groups/` | Authenticated | List groups |
+| `POST` | `/api/groups/` | Admin/Superuser | Create group |
+| `GET` | `/api/groups/<id>/` | Authenticated | Get group detail |
+| `PUT/PATCH` | `/api/groups/<id>/` | Admin/Superuser | Update group |
+| `DELETE` | `/api/groups/<id>/` | Admin/Superuser | Delete group |
+
+### Events
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/events/` | None / Authenticated | List events |
+| `POST` | `/api/events/` | Organizer/Admin | Create event |
+| `GET` | `/api/events/<id>/` | None / Authenticated | Get event detail |
+| `PUT/PATCH` | `/api/events/<id>/` | Organizer (own) / Admin | Update event |
+| `DELETE` | `/api/events/<id>/` | Organizer (own) / Admin | Delete event |
+| `POST` | `/api/events/<id>/publish/` | Organizer (own) / Admin | Publish event |
+| `POST` | `/api/events/<id>/cancel/` | Organizer (own) / Admin | Cancel event |
+| `GET` | `/api/events/upcoming/` | None | Upcoming published events |
+| `GET` | `/api/events/my-events/` | Organizer | Own events |
+| `POST` | `/api/events/upload/` | Organizer/Admin | Upload event poster image |
+| `GET` | `/api/events/<id>/poster/` | Authenticated | Get event poster metadata |
+
+### Tickets
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/tickets/ticket-types/` | Authenticated | List ticket types |
+| `POST` | `/api/tickets/ticket-types/` | Organizer/Admin | Create ticket type |
+| `GET` | `/api/tickets/ticket-types/<id>/` | Authenticated | Get ticket type detail |
+| `PUT/PATCH` | `/api/tickets/ticket-types/<id>/` | Organizer (own) / Admin | Update ticket type |
+| `DELETE` | `/api/tickets/ticket-types/<id>/` | Organizer (own) / Admin | Delete ticket type |
+| `GET` | `/api/tickets/events/<event_id>/ticket-types/` | Authenticated | Ticket types for an event |
+| `POST` | `/api/tickets/ticket-types/<id>/generate/` | Organizer/Admin | Generate individual ticket records |
+| `GET` | `/api/tickets/` | Authenticated | List tickets |
+| `GET` | `/api/tickets/<id>/` | Authenticated | Get ticket detail |
+| `GET` | `/api/tickets/validate/<code>/` | Organizer/Admin | Validate a ticket code |
+| `POST` | `/api/tickets/use/<code>/` | Organizer/Admin | Mark a ticket as used |
+
+### Registrations
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/registrations/` | Authenticated | List registrations |
+| `POST` | `/api/registrations/` | Authenticated | Create a registration |
+| `GET` | `/api/registrations/<id>/` | Authenticated (own) / Admin | Get registration detail |
+| `PUT/PATCH` | `/api/registrations/<id>/` | Admin | Update registration |
+| `DELETE` | `/api/registrations/<id>/` | Admin | Delete registration |
+| `GET` | `/api/registrations/my/` | Authenticated | Own registrations |
+| `GET` | `/api/registrations/events/<event_id>/registrations/` | Organizer/Admin | Registrations for an event |
+| `PATCH` | `/api/registrations/<id>/status/` | Admin | Update registration status |
+| `POST` | `/api/registrations/<id>/cancel/` | Authenticated (own) / Admin | Cancel registration |
+
+### Payments
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/payments/` | Authenticated | List payments |
+| `POST` | `/api/payments/` | Authenticated | Create payment record |
+| `GET` | `/api/payments/<id>/` | Authenticated (own) / Admin | Get payment detail |
+| `PUT/PATCH` | `/api/payments/<id>/` | Admin | Update payment |
+| `DELETE` | `/api/payments/<id>/` | Admin | Delete payment |
+| `GET` | `/api/payments/my/` | Authenticated | Own payments |
+| `POST` | `/api/payments/initiate/` | Authenticated | Initiate payment for a registration |
+| `PATCH` | `/api/payments/<id>/status/` | Admin | Update payment status |
+| `POST` | `/api/payments/<id>/refund/` | Admin | Refund a payment |
+
+### Async Tasks
+
+| Method | Path | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/tasks/<task_id>/status/` | Authenticated | Poll async task status |
+
 ## Environment Configuration
 
-Copy the template and edit it:
+Copy the template and fill in the required values:
 
 ```bash
 cp .env.example .env
 python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"
 ```
 
-The Django application reads these variables:
+Required variables:
 
 ```env
 DATABASE_NAME=dicoevent_production
@@ -100,16 +223,16 @@ ALLOWED_HOSTS=localhost,127.0.0.1
 JWT_ACCESS_TOKEN_LIFETIME_HOURS=3
 ```
 
-Optional variables (default values are already handled in settings):
+Optional variables (defaults are handled in [settings.py](dicoevent_project/settings.py)):
 
 ```env
-# Cache backend
+# Cache backend ("locmem" by default; set to "redis" for Redis-backed cache)
 CACHE_BACKEND=locmem
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 REDIS_DB=1
 
-# Celery backend
+# Celery async task broker (sync fallback is used when no broker is available)
 CELERY_BROKER_URL=redis://127.0.0.1:6379/0
 CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0
 
@@ -117,7 +240,7 @@ CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0
 DEFAULT_FROM_EMAIL=noreply@dicoevent.local
 ```
 
-Local Newman helpers additionally use:
+Newman helper variables:
 
 ```env
 POSTMAN_HOST=localhost
@@ -138,7 +261,7 @@ GRANT ALL PRIVILEGES ON DATABASE dicoevent_production TO dicoevent_user;
 ALTER USER dicoevent_user CREATEDB;
 ```
 
-Then verify access and run migrations:
+Verify access and run migrations:
 
 ```bash
 PGPASSWORD=your_secure_password_here psql -h localhost -U dicoevent_user -d dicoevent_production -c "SELECT version();"
@@ -146,7 +269,7 @@ python manage.py makemigrations
 python manage.py migrate
 ```
 
-You can also use the helper target:
+Or use the Makefile helpers:
 
 ```bash
 make db-init
@@ -155,14 +278,14 @@ make migrate
 
 ## Local Development
 
-Install dependencies with either `pipenv` or `pip`:
+Install dependencies using `pipenv` (recommended):
 
 ```bash
 pipenv install --dev
 pipenv shell
 ```
 
-or:
+Or with a plain virtual environment:
 
 ```bash
 python -m venv venv
@@ -170,39 +293,40 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-If you plan to run [test-suite.sh](test-suite.sh), keep the virtual environment at `venv/` because that script currently resolves Python from `venv/bin/python`.
+> **Note:** [test-suite.sh](test-suite.sh) expects the virtual environment at `venv/` because it resolves Python from `venv/bin/python`.
 
-Run the server:
+Run the development server:
 
 ```bash
 python manage.py runserver 0.0.0.0:8000
-```
-
-or:
-
-```bash
+# or
 make run
 ```
 
 ## Quick Start (Without Docker)
 
-This is the recommended local flow for this repository:
+The recommended local flow for this repository:
 
 ```bash
-# 1) activate local virtualenv
-source venv/bin/activate
+# 1) Install dependencies and activate the environment
+pipenv install --dev
+pipenv shell
 
-# 2) apply schema
+# 2) Configure environment
+cp .env.example .env
+# Edit .env with your database credentials and a generated SECRET_KEY
+
+# 3) Apply database schema
 python manage.py migrate
 
-# 3) load deterministic baseline data
-python initialize_test_data.py
+# 4) Seed data required by the Postman V2 collection
+python setup_test_data.py
 
-# 4) run API
+# 5) Start the API server
 python manage.py runserver 0.0.0.0:8000
 ```
 
-In another terminal, run Newman against Version 2 assets:
+In a second terminal, run Newman against the Version 2 collection:
 
 ```bash
 python scripts/run_newman.py \
@@ -211,59 +335,54 @@ python scripts/run_newman.py \
     --timeout-request 60000
 ```
 
-Quick API readiness check (any HTTP response code confirms process is reachable):
+Check API reachability:
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/api/events/
 ```
 
-Expected Newman V2 baseline result in this repository state is:
+Expected Newman V2 result:
 
-- 78 requests
-- 197 assertions
-- 0 failed assertions
+- 78 requests, 0 failed
+- 197 assertions, 0 failed
 
 ## Seed Scripts
 
-This repository contains three seed helpers:
+| Script | Purpose |
+| --- | --- |
+| [create_initial_data.py](create_initial_data.py) | Minimal baseline users for manual testing |
+| [initialize_test_data.py](initialize_test_data.py) | Full deterministic dataset (used by `make postman`) |
+| [setup_test_data.py](setup_test_data.py) | Extended dataset that includes the `Aras` and `dicoding` accounts required by the Postman V2 environment variables |
 
-- [create_initial_data.py](create_initial_data.py): baseline local users
-- [initialize_test_data.py](initialize_test_data.py): deterministic dataset for Newman collection runs
-- [setup_test_data.py](setup_test_data.py): broader sample dataset for manual/API testing
+All three scripts are idempotent — running them multiple times will not create duplicate records.
 
-These scripts are idempotent and can be run repeatedly without duplicating their seeded records.
+For the Postman V2 collection to pass, **`setup_test_data.py` must be run** before executing Newman. The collection's environment file sets `usernameSuperUser=Aras` and `username=dicoding`; these accounts are created by `setup_test_data.py`.
 
 ## Testing
 
-Run the Django test suite:
+Run the Django unit test suite:
 
 ```bash
 python manage.py test --verbosity=2
-```
-
-or:
-
-```bash
+# or
 make djtest
 ```
 
-If `pytest` is installed in your active environment, this also works:
+If `pytest` is installed:
 
 ```bash
 pytest
 ```
 
-Note: `pytest` is optional. `python manage.py test` is the canonical test command in this repository.
-
-Run the full local API validation workflow (database reset, seed, server startup, Newman run, summary):
+Run the full local API validation workflow (database reset, seed, server, Newman, summary):
 
 ```bash
 ./test-suite.sh
 ```
 
-`./test-suite.sh` expects both [.env](.env) and a virtual environment at `venv/`.
+`./test-suite.sh` expects [.env](.env) and a virtual environment at `venv/`.
 
-Generate a standalone summary from the latest Newman JSON report:
+Generate a summary from the latest Newman JSON report:
 
 ```bash
 ./report-tests.sh
@@ -271,9 +390,22 @@ Generate a standalone summary from the latest Newman JSON report:
 
 ## Newman / Postman
 
-Preferred: run the Python wrapper directly with explicit collection and environment paths.
+> **Rule:** Do not edit files inside [[788] DicoEvent Versi 1 Postman]([788]%20DicoEvent%20Versi%201%20Postman) or [[788] DicoEvent Versi 2 Postman]([788]%20DicoEvent%20Versi%202%20Postman) to work around runtime issues.
 
-Version 1:
+### Recommended: Python wrapper (`scripts/run_newman.py`)
+
+This is the portable method. It writes a temporary patched copy of the collection before passing it to Newman, resolving `{{host}}`/`{{port}}` backtick template literals in `pm.sendRequest()` calls and remapping the hardcoded `/home/aras/Downloads/` file-upload paths to the tracked [test_uploads/](test_uploads) directory.
+
+**Version 2 (required for final submission):**
+
+```bash
+python scripts/run_newman.py \
+    --collection "./[788] DicoEvent Versi 2 Postman/[788] DicoEvent versi 2.postman_collection.json" \
+    --environment "./[788] DicoEvent Versi 2 Postman/[788] DicoEvent.postman_environment.json" \
+    --timeout-request 60000
+```
+
+**Version 1:**
 
 ```bash
 python scripts/run_newman.py \
@@ -282,67 +414,80 @@ python scripts/run_newman.py \
     --timeout-request 60000
 ```
 
-Version 2:
+The script requires the Django server to be running before it is called.
+
+### Alternative: Node.js wrapper (`run-newman-fixed.js`)
+
+[run-newman-fixed.js](run-newman-fixed.js) applies the same template-variable patching but does **not** remap the hardcoded `/home/aras/Downloads/` upload paths. Use this wrapper only if the upload fixture files are present at that path on your machine.
 
 ```bash
-python scripts/run_newman.py \
-    --collection "./[788] DicoEvent Versi 2 Postman/[788] DicoEvent versi 2.postman_collection.json" \
-    --environment "./[788] DicoEvent Versi 2 Postman/[788] DicoEvent.postman_environment.json" \
-    --timeout-request 60000
+node run-newman-fixed.js \
+    "[788] DicoEvent Versi 2 Postman/[788] DicoEvent versi 2.postman_collection.json" \
+    "[788] DicoEvent Versi 2 Postman/[788] DicoEvent.postman_environment.json" \
+    localhost 8000
 ```
 
-The direct wrapper expects the Django server to already be running.
-
-You can also run the Make target:
+### Make target
 
 ```bash
 make postman
 ```
 
-What `make postman` does:
+`make postman` flushes the database, runs [initialize_test_data.py](initialize_test_data.py), then calls [scripts/run_newman.py](scripts/run_newman.py). It does **not** reseed with `setup_test_data.py`, so the Postman V2 environment accounts (`Aras`, `dicoding`) will be absent. Run `setup_test_data.py` manually before using this target with the V2 collection.
 
-1. flushes the database
-2. runs [initialize_test_data.py](initialize_test_data.py)
-3. executes [scripts/run_newman.py](scripts/run_newman.py)
+### How the wrappers work
 
-Unlike [test-suite.sh](test-suite.sh), `make postman` does not start Django for you. Start the API server first, then run the target.
+The V2 Postman collection contains `pm.sendRequest(...)` calls that embed `{{host}}` and `{{port}}` inside JavaScript backtick template literals. Newman cannot expand those variables inside script strings, causing a `RangeError: Port should be >= 0 and < 65536` error. Both wrappers work around this by creating a temporary in-memory copy of the collection with the variable references replaced by literal values before Newman loads the file.
 
-The Python Newman wrapper uses a temporary copy of the checked-in Postman collection so `{{host}}` and `{{port}}` placeholders inside embedded `pm.sendRequest(...)` scripts resolve correctly, and so the user-update request stays aligned with the collection's `{{newUsername}}` assertion, without modifying the original Postman files.
+## Fixture Files for Upload Tests
 
-Best-practice rule for this repository: do not edit files inside [Postman Version 1 folder]([788]%20DicoEvent%20Versi%201%20Postman) or [Postman Version 2 folder]([788]%20DicoEvent%20Versi%202%20Postman) to fix runtime variable resolution.
+The Postman V2 collection includes tests that upload image files. The collection JSON hardcodes the path `/home/aras/Downloads/`. The Python wrapper ([scripts/run_newman.py](scripts/run_newman.py)) automatically remaps this to [test_uploads/](test_uploads), which is version-controlled and contains:
 
-For the all-in-one local run, [test-suite.sh](test-suite.sh) uses the Node wrapper [run-newman-fixed.js](run-newman-fixed.js), which starts Django, runs Newman, and prints the parsed summary. Because it also references legacy `DicoEvent_Versi_1_Postman/...` paths today, verify/update those paths before relying on it in this workspace.
+| File | Size | Purpose |
+| --- | --- | --- |
+| `test_uploads/6298845955545483427.jpg` | ~1 KB | Valid small poster image |
+| `test_uploads/picture-large.jpg` | ~550 KB | Oversized image (tests the file size validation error path) |
 
-## Known Local Caveats
+If you use [run-newman-fixed.js](run-newman-fixed.js) instead, create `/home/aras/Downloads/` and copy both files there.
 
-- [scripts/run_newman.py](scripts/run_newman.py), [Makefile](Makefile), [test-suite.sh](test-suite.sh), and [run-newman-fixed.js](run-newman-fixed.js) still contain legacy default paths (`DicoEvent_Versi_1_Postman/...`).
-- The checked-in folders in this workspace are [[788] DicoEvent Versi 1 Postman]([788]%20DicoEvent%20Versi%201%20Postman) and [[788] DicoEvent Versi 2 Postman]([788]%20DicoEvent%20Versi%202%20Postman).
-- For reliable local execution without editing collection files, always pass explicit `--collection` and `--environment` values to [scripts/run_newman.py](scripts/run_newman.py), as shown above.
-- [scripts](scripts) currently contains only [run_newman.py](scripts/run_newman.py), so Makefile targets `readme`, `doc-links`, and `docs` are present but will fail until their helper scripts are added.
+## Known Caveats
+
+- The default collection and environment paths hard-coded in [run-newman-fixed.js](run-newman-fixed.js) and [scripts/run_newman.py](scripts/run_newman.py) point to Version 1 assets. Always pass explicit `--collection` and `--environment` arguments when targeting Version 2, as shown in the examples above.
+- [scripts](scripts) currently contains only [run_newman.py](scripts/run_newman.py). The Makefile targets `readme`, `doc-links`, and `docs` reference helper scripts (`validate_readme.py`, `check_doc_links.py`) that are not present yet; those targets will fail until the scripts are added.
+- Celery async tasks require a running Redis broker. When no broker is available, `api/celery_compat.py` executes tasks synchronously so the API remains functional without any additional infrastructure.
+- The `media/` directory at the project root stores uploaded event poster images. It is tracked in version control via a `.gitkeep` placeholder. In production, configure a persistent storage backend instead of the local filesystem.
 
 ## Useful Make Targets
 
-```bash
-make env
-make venv
-make db-init
-make migrate
-make createsuper
-make run
-make djtest
-make postman
-```
+| Target | Action |
+| --- | --- |
+| `make env` | Copy `.env.example` to `.env` |
+| `make venv` | Install dependencies and open `pipenv shell` |
+| `make db-init` | Create PostgreSQL database and user |
+| `make migrate` | Run `makemigrations` + `migrate` |
+| `make createsuper` | Interactive superuser creation |
+| `make run` | Start development server on `0.0.0.0:8000` |
+| `make djtest` | Run Django unit tests |
+| `make postman` | Flush DB, seed, and run Newman V1 (see note above for V2) |
+| `make all` | `migrate` + `djtest` + `postman` |
 
-The source for these commands is [Makefile](Makefile). Additional targets in the Makefile may reference helper scripts that are not currently present in [scripts](scripts).
+Full command reference: [Makefile](Makefile).
 
 ## Documentation
 
-Additional project documentation is available under [docs](docs).
+Additional project documentation is available under [docs](docs):
+
+- [API_DOCUMENTATION.md](docs/API_DOCUMENTATION.md) — detailed endpoint reference
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design overview
+- [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) — production deployment notes
+- [SECURITY.md](docs/SECURITY.md) — security considerations
+- [TESTING.md](docs/TESTING.md) — testing strategy
+- [TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common issues and solutions
 
 ## Current Scope
 
-This README documents only components that are either active by default or already wired with optional runtime backends in code. In particular:
+This README documents only components that are either active by default or already wired with optional runtime backends in code:
 
 - Caching and structured logging are active in current settings.
-- Celery configuration and task hooks exist, but a worker and broker are optional for local API execution.
+- Celery configuration and task hooks exist, but a running worker and broker are optional for local API execution.
 - Docker Compose orchestration, Sentry, Stripe, and alternate Django settings modules are not part of the current local workflow described here.
