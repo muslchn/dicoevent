@@ -1,4 +1,5 @@
 from typing import Type
+import logging
 from rest_framework import generics, status  # type: ignore[import]
 from rest_framework.decorators import api_view, permission_classes  # type: ignore[import]
 from rest_framework.permissions import IsAuthenticated, AllowAny  # type: ignore[import]
@@ -17,6 +18,17 @@ from .serializers import (
 from users.permissions import CanManageRegistrations  # type: ignore[import]
 from events.models import Event  # type: ignore[import]
 from tickets.models import TicketType  # type: ignore[import]
+from api.cache_utils import (
+    build_cache_key,
+    get_cached_payload,
+    invalidate_cache_namespace,
+    set_cached_payload,
+)
+from api.celery_compat import enqueue_task
+
+logger = logging.getLogger("registrations")
+
+REGISTRATION_LIST_CACHE_TTL = 120
 
 
 class RegistrationListCreateView(generics.ListCreateAPIView):
@@ -37,9 +49,16 @@ class RegistrationListCreateView(generics.ListCreateAPIView):
 
     def list(self, request, *args, **kwargs):
         """Override to return array directly instead of paginated response"""
+        cache_key = build_cache_key("registrations", request, "list")
+        cached_payload = get_cached_payload(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload)
+
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
-        return Response({"registrations": serializer.data})
+        payload = {"registrations": serializer.data}
+        set_cached_payload(cache_key, payload, REGISTRATION_LIST_CACHE_TTL)
+        return Response(payload)
 
     def get_queryset(self):  # type: ignore[override]
         queryset = Registration.objects.all()
@@ -101,6 +120,19 @@ class RegistrationListCreateView(generics.ListCreateAPIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         registration = self.perform_create(serializer)
+        invalidate_cache_namespace("registrations")
+        logger.info(
+            "registration_created",
+            extra={"registration_id": str(registration.id)},
+        )
+
+        # Queue async follow-up without blocking response.
+        try:
+            from tickets.tasks import generate_ticket_qr_codes
+
+            enqueue_task(generate_ticket_qr_codes, str(registration.id))
+        except Exception:
+            logger.exception("registration_follow_up_task_failed")
 
         # update user if override was given and permitted
         if override_user_id and (
@@ -135,14 +167,38 @@ class RegistrationDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def retrieve(self, request, *args, **kwargs):
+        cache_key = build_cache_key("registrations", request, "detail")
+        cached_payload = get_cached_payload(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload)
+
         instance = self.get_object()
-        return Response(
-            {
-                "id": str(instance.id),
-                "ticket": str(instance.ticket_type.id),
-                "user": str(instance.user.id),
-            }
+        payload = {
+            "id": str(instance.id),
+            "ticket": str(instance.ticket_type.id),
+            "user": str(instance.user.id),
+        }
+        set_cached_payload(cache_key, payload, REGISTRATION_LIST_CACHE_TTL)
+        return Response(payload)
+
+    def perform_update(self, serializer):
+        registration = serializer.save()
+        invalidate_cache_namespace("registrations")
+        logger.info(
+            "registration_updated",
+            extra={"registration_id": str(registration.id)},
         )
+        return registration
+
+    def perform_destroy(self, instance):
+        registration_id = str(instance.id)
+        result = super().perform_destroy(instance)
+        invalidate_cache_namespace("registrations")
+        logger.info(
+            "registration_deleted",
+            extra={"registration_id": registration_id},
+        )
+        return result
 
     def get_serializer_class(self):  # type: ignore[override]
         if self.request.method in ["PUT", "PATCH"]:
@@ -186,10 +242,16 @@ class RegistrationDetailView(generics.RetrieveUpdateDestroyAPIView):
 @permission_classes([IsAuthenticated])
 def my_registrations(request):
     """Get current user's registrations"""
+    cache_key = build_cache_key("registrations", request, "my")
+    cached_payload = get_cached_payload(cache_key)
+    if cached_payload is not None:
+        return Response(cached_payload)
+
     registrations = Registration.objects.filter(user=request.user).order_by(
         "-registered_at"
     )
     serializer = RegistrationSerializer(registrations, many=True)
+    set_cached_payload(cache_key, serializer.data, REGISTRATION_LIST_CACHE_TTL)
     return Response(serializer.data)
 
 
@@ -252,6 +314,7 @@ def update_registration_status(request, pk):
             )
 
         serializer.save()
+        invalidate_cache_namespace("registrations")
         return Response(
             {
                 "message": "Registration status updated successfully",
@@ -280,6 +343,7 @@ def cancel_registration(request, pk):
         )
 
     if registration.cancel_registration():
+        invalidate_cache_namespace("registrations")
         return Response(
             {
                 "message": "Registration cancelled successfully",

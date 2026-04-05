@@ -6,6 +6,9 @@ DicoEvent is a Django REST API for event management. The current codebase provid
 - role-aware access control for users, organizers, admins, and superusers
 - event, ticket, registration, and payment endpoints
 - PostgreSQL-backed persistence
+- API request/response logging middleware with rotating log files
+- cache-backed read paths with namespace invalidation on write operations
+- optional Celery-compatible async task hooks (sync fallback when Celery worker is absent)
 - deterministic local seeding and Newman/Postman test execution
 
 This README is intentionally limited to what is implemented in this repository today.
@@ -19,6 +22,9 @@ This README is intentionally limited to what is implemented in this repository t
 - PostgreSQL
 - `python-decouple` for environment variables
 - `django-filter`
+- `django-redis` (optional Redis cache backend)
+- Celery + Redis client packages (optional async worker backend)
+- `python-json-logger` (installed dependency)
 - Newman for Postman collection execution
 
 Installed Python dependencies are defined in [requirements.txt](requirements.txt).
@@ -54,7 +60,7 @@ Notes:
 
 - The active Django settings module is [dicoevent_project/settings.py](dicoevent_project/settings.py).
 - There is no root-level `docker-compose.yml` in this repository.
-- Postman assets are kept under [Postman Version 1 folder]([788]%20DicoEvent%20Versi%201%20Postman) and [Postman Version 2 folder]([788]%20DicoEvent%20Versi%202%20Postman).
+- Postman assets are kept under [[788] DicoEvent Versi 1 Postman]([788]%20DicoEvent%20Versi%201%20Postman) and [[788] DicoEvent Versi 2 Postman]([788]%20DicoEvent%20Versi%202%20Postman).
 
 ## Prerequisites
 
@@ -92,6 +98,23 @@ DEBUG=True
 ALLOWED_HOSTS=localhost,127.0.0.1
 
 JWT_ACCESS_TOKEN_LIFETIME_HOURS=3
+```
+
+Optional variables (default values are already handled in settings):
+
+```env
+# Cache backend
+CACHE_BACKEND=locmem
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6379
+REDIS_DB=1
+
+# Celery backend
+CELERY_BROKER_URL=redis://127.0.0.1:6379/0
+CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0
+
+# Email sender identity for async notifications
+DEFAULT_FROM_EMAIL=noreply@dicoevent.local
 ```
 
 Local Newman helpers additionally use:
@@ -188,11 +211,17 @@ python scripts/run_newman.py \
     --timeout-request 60000
 ```
 
-Quick API readiness check:
+Quick API readiness check (any HTTP response code confirms process is reachable):
 
 ```bash
-curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/api/events/
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/
 ```
+
+Expected Newman V2 baseline result in this repository state is:
+
+- 78 requests
+- 197 assertions
+- 0 failed assertions
 
 ## Seed Scripts
 
@@ -223,6 +252,8 @@ If `pytest` is installed in your active environment, this also works:
 ```bash
 pytest
 ```
+
+Note: `pytest` is optional. `python manage.py test` is the canonical test command in this repository.
 
 Run the full local API validation workflow (database reset, seed, server startup, Newman run, summary):
 
@@ -285,8 +316,9 @@ For the all-in-one local run, [test-suite.sh](test-suite.sh) uses the Node wrapp
 ## Known Local Caveats
 
 - [scripts/run_newman.py](scripts/run_newman.py), [Makefile](Makefile), [test-suite.sh](test-suite.sh), and [run-newman-fixed.js](run-newman-fixed.js) still contain legacy default paths (`DicoEvent_Versi_1_Postman/...`).
-- The checked-in folders in this workspace are [Postman Version 1 folder]([788]%20DicoEvent%20Versi%201%20Postman) and [Postman Version 2 folder]([788]%20DicoEvent%20Versi%202%20Postman).
+- The checked-in folders in this workspace are [[788] DicoEvent Versi 1 Postman]([788]%20DicoEvent%20Versi%201%20Postman) and [[788] DicoEvent Versi 2 Postman]([788]%20DicoEvent%20Versi%202%20Postman).
 - For reliable local execution without editing collection files, always pass explicit `--collection` and `--environment` values to [scripts/run_newman.py](scripts/run_newman.py), as shown above.
+- [scripts](scripts) currently contains only [run_newman.py](scripts/run_newman.py), so Makefile targets `readme`, `doc-links`, and `docs` are present but will fail until their helper scripts are added.
 
 ## Useful Make Targets
 
@@ -309,4 +341,8 @@ Additional project documentation is available under [docs](docs).
 
 ## Current Scope
 
-This README does not document unsupported or unconfigured components such as Redis, Celery, Sentry, Stripe, docker-compose orchestration, or alternate Django settings modules, because they are not wired into the current repository state.
+This README documents only components that are either active by default or already wired with optional runtime backends in code. In particular:
+
+- Caching and structured logging are active in current settings.
+- Celery configuration and task hooks exist, but a worker and broker are optional for local API execution.
+- Docker Compose orchestration, Sentry, Stripe, and alternate Django settings modules are not part of the current local workflow described here.

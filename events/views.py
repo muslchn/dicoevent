@@ -4,12 +4,24 @@ from rest_framework.permissions import IsAuthenticated  # type: ignore[import]
 from rest_framework.response import Response  # type: ignore[import]
 from django.shortcuts import get_object_or_404  # type: ignore[import]
 from django.core.paginator import Paginator
+import logging
 from django_filters.rest_framework import DjangoFilterBackend  # type: ignore[import]
 from rest_framework import filters  # type: ignore[import]
 from PIL import Image, UnidentifiedImageError
+from api.cache_utils import (
+    build_cache_key,
+    get_cached_payload,
+    invalidate_cache_namespace,
+    set_cached_payload,
+)
 from .models import Event
 from .serializers import EventSerializer, EventCreateSerializer, EventUpdateSerializer
 from users.permissions import CanManageEvents, IsOrganizerOrAdmin
+
+logger = logging.getLogger("events")
+
+EVENTS_LIST_CACHE_TTL = 120
+EVENTS_DETAIL_CACHE_TTL = 120
 
 
 class EventListCreateView(generics.ListCreateAPIView):
@@ -30,6 +42,11 @@ class EventListCreateView(generics.ListCreateAPIView):
 
     def list(self, request, *args, **kwargs):
         """Override to return paginated object format with results array"""
+        cache_key = build_cache_key("events", request, "list")
+        cached_payload = get_cached_payload(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload)
+
         queryset = self.filter_queryset(self.get_queryset())
         if self.paginator is not None:
             # Gracefully normalize invalid/high page numbers to a valid page.
@@ -41,10 +58,14 @@ class EventListCreateView(generics.ListCreateAPIView):
                 )
                 page = paginator.get_page(page_number)
                 serializer = self.get_serializer(page.object_list, many=True)
-                return Response({"events": serializer.data})
+                payload = {"events": serializer.data}
+                set_cached_payload(cache_key, payload, EVENTS_LIST_CACHE_TTL)
+                return Response(payload)
 
         serializer = self.get_serializer(queryset, many=True)
-        return Response({"events": serializer.data})
+        payload = {"events": serializer.data}
+        set_cached_payload(cache_key, payload, EVENTS_LIST_CACHE_TTL)
+        return Response(payload)
 
     def get_serializer_class(self):  # type: ignore
         if self.request.method == "POST":
@@ -53,7 +74,10 @@ class EventListCreateView(generics.ListCreateAPIView):
 
     def perform_create(self, serializer):
         # Set the organizer to the current user
-        return serializer.save(organizer=self.request.user)
+        event = serializer.save(organizer=self.request.user)
+        invalidate_cache_namespace("events")
+        logger.info("event_created", extra={"event_id": str(event.id)})
+        return event
 
     def create(self, request, *args, **kwargs):
         # Accept Postman-style fields and map to serializer expected names
@@ -147,6 +171,11 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def retrieve(self, request, *args, **kwargs):
         """Return detail using Postman-compatible key names."""
+        cache_key = build_cache_key("events", request, "detail")
+        cached_payload = get_cached_payload(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload)
+
         instance = self.get_object()
         # reuse update logic to map names
         data = {
@@ -160,7 +189,21 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
             "quota": instance.capacity,
             "category": "General",  # not stored in model
         }
+        set_cached_payload(cache_key, data, EVENTS_DETAIL_CACHE_TTL)
         return Response(data)
+
+    def perform_update(self, serializer):
+        updated_event = serializer.save()
+        invalidate_cache_namespace("events")
+        logger.info("event_updated", extra={"event_id": str(updated_event.id)})
+        return updated_event
+
+    def perform_destroy(self, instance):
+        event_id = str(instance.id)
+        result = super().perform_destroy(instance)
+        invalidate_cache_namespace("events")
+        logger.info("event_deleted", extra={"event_id": event_id})
+        return result
 
     def get_serializer_class(self):  # type: ignore
         if self.request.method in ["PUT", "PATCH"]:
@@ -255,11 +298,17 @@ def upcoming_events(request):
     """Get upcoming events"""
     from django.utils import timezone
 
+    cache_key = build_cache_key("events", request, "upcoming")
+    cached_payload = get_cached_payload(cache_key)
+    if cached_payload is not None:
+        return Response(cached_payload)
+
     upcoming = Event.objects.filter(
         start_date__gte=timezone.now(), status="published"
     ).order_by("start_date")
 
     serializer = EventSerializer(upcoming, many=True)
+    set_cached_payload(cache_key, serializer.data, EVENTS_LIST_CACHE_TTL)
     return Response(serializer.data)
 
 
@@ -267,8 +316,14 @@ def upcoming_events(request):
 @permission_classes([IsAuthenticated])
 def my_events(request):
     """Get events organized by the current user"""
+    cache_key = build_cache_key("events", request, "my-events")
+    cached_payload = get_cached_payload(cache_key)
+    if cached_payload is not None:
+        return Response(cached_payload)
+
     my_events = Event.objects.filter(organizer=request.user).order_by("-created_at")
     serializer = EventSerializer(my_events, many=True)
+    set_cached_payload(cache_key, serializer.data, EVENTS_LIST_CACHE_TTL)
     return Response(serializer.data)
 
 
@@ -292,6 +347,7 @@ def publish_event(request, pk):
     if event.status == "draft":
         event.status = "published"
         event.save()
+        invalidate_cache_namespace("events")
         return Response(
             {
                 "message": "Event published successfully",
@@ -325,6 +381,7 @@ def cancel_event(request, pk):
     if event.status in ["published", "draft"]:
         event.status = "cancelled"
         event.save()
+        invalidate_cache_namespace("events")
         return Response(
             {
                 "message": "Event cancelled successfully",
@@ -376,6 +433,8 @@ def upload_event_poster(request):
 
     event.image = image_file
     event.save(update_fields=["image", "updated_at"])
+    invalidate_cache_namespace("events")
+    logger.info("event_poster_uploaded", extra={"event_id": str(event.id)})
 
     return Response(
         {"id": str(event.id), "image": str(event.image)},
@@ -387,9 +446,18 @@ def upload_event_poster(request):
 @permission_classes([IsAuthenticated])
 def get_event_poster(request, pk):
     """Get poster metadata for an event."""
+    cache_key = build_cache_key("events", request, "poster")
+    cached_payload = get_cached_payload(cache_key)
+    if cached_payload is not None:
+        return Response(cached_payload)
+
     event = get_object_or_404(Event, pk=pk)
 
     if not event.image:
-        return Response([])
+        payload = []
+        set_cached_payload(cache_key, payload, EVENTS_DETAIL_CACHE_TTL)
+        return Response(payload)
 
-    return Response([{"id": str(event.id), "image": str(event.image)}])
+    payload = [{"id": str(event.id), "image": str(event.image)}]
+    set_cached_payload(cache_key, payload, EVENTS_DETAIL_CACHE_TTL)
+    return Response(payload)

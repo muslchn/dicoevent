@@ -9,6 +9,7 @@ from rest_framework_simplejwt.serializers import (  # type: ignore[import]
 )
 from django.shortcuts import get_object_or_404  # type: ignore[import]
 from typing import cast
+import logging
 from .models import User, Group
 from .serializers import (
     UserRegistrationSerializer,
@@ -19,6 +20,8 @@ from .serializers import (
 )
 from .group_serializers import GroupSerializer
 from .permissions import IsAdminOrSuperUser
+
+logger = logging.getLogger("users")
 
 
 @api_view(["POST"])
@@ -61,15 +64,21 @@ def assign_user_to_group(request):
 def token_endpoint(request):
     """Unified token endpoint: if payload has 'refresh' perform refresh, else obtain pair."""
     if isinstance(request.data, dict) and request.data.get("refresh"):
+        logger.info("token_refresh_attempt")
         serializer = TokenRefreshSerializer(data=request.data)
         if serializer.is_valid():
+            logger.info("token_refresh_success")
             return Response(serializer.validated_data)
+        logger.warning("token_refresh_failed")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     # Obtain pair
     serializer = TokenObtainPairSerializer(data=request.data)
+    logger.info("token_obtain_attempt")
     if serializer.is_valid():
+        logger.info("token_obtain_success")
         return Response(serializer.validated_data)
+    logger.warning("token_obtain_failed")
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -157,6 +166,7 @@ def register_user(request):
     serializer = UserRegistrationSerializer(data=request.data)
     if serializer.is_valid():
         user = cast(User, serializer.save())
+        logger.info("user_registered", extra={"user_id": str(user.id)})
         return Response(
             {
                 "id": str(user.id),
@@ -173,6 +183,8 @@ def register_user(request):
 @permission_classes([AllowAny])
 def login_user(request):
     """Login user and return JWT tokens"""
+    username = request.data.get("username", "unknown")
+    logger.info("login_attempt", extra={"username": username})
     serializer = UserLoginSerializer(data=request.data)
     if serializer.is_valid():
         # Handle the validated data safely with proper type checking
@@ -184,6 +196,7 @@ def login_user(request):
             )
 
         refresh = RefreshToken.for_user(user)
+        logger.info("login_success", extra={"user_id": str(user.id)})
 
         return Response(
             {
@@ -191,6 +204,7 @@ def login_user(request):
                 "access": str(refresh.access_token),
             }
         )
+    logger.warning("login_failed", extra={"username": username})
     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 

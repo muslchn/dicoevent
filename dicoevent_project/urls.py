@@ -18,6 +18,7 @@ from django.contrib import admin  # type: ignore[import]
 from django.urls import path, include  # type: ignore[import]
 from users import views as user_views
 from rest_framework_simplejwt.views import TokenRefreshView
+from api.views import task_status
 
 urlpatterns = [
     path("admin/", admin.site.urls),
@@ -37,4 +38,5 @@ urlpatterns = [
     path("api/groups/<int:pk>/", user_views.GroupDetailView.as_view()),
     # User-group assignment endpoint
     path("api/assign-roles/", user_views.assign_user_to_group, name="assign-roles"),
+    path("api/tasks/<str:task_id>/status/", task_status, name="task-status"),
 ]

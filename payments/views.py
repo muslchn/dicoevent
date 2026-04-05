@@ -1,4 +1,5 @@
 from typing import Type
+import logging
 from rest_framework import generics, status  # type: ignore[import]
 from rest_framework.decorators import api_view, permission_classes  # type: ignore[import]
 from rest_framework.permissions import IsAuthenticated, AllowAny  # type: ignore[import]
@@ -17,6 +18,17 @@ from .serializers import (
 )
 from users.permissions import CanManagePayments
 from registrations.models import Registration
+from api.cache_utils import (
+    build_cache_key,
+    get_cached_payload,
+    invalidate_cache_namespace,
+    set_cached_payload,
+)
+from api.celery_compat import enqueue_task
+
+logger = logging.getLogger("payments")
+
+PAYMENTS_CACHE_TTL = 120
 
 
 class PaymentListCreateView(generics.ListCreateAPIView):
@@ -37,9 +49,16 @@ class PaymentListCreateView(generics.ListCreateAPIView):
 
     def list(self, request, *args, **kwargs):
         """Override to return array directly instead of paginated response"""
+        cache_key = build_cache_key("payments", request, "list")
+        cached_payload = get_cached_payload(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload)
+
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
-        return Response({"payments": serializer.data})
+        payload = {"payments": serializer.data}
+        set_cached_payload(cache_key, payload, PAYMENTS_CACHE_TTL)
+        return Response(payload)
 
     def get_queryset(self):  # type: ignore[override]
         queryset = Payment.objects.all()
@@ -92,6 +111,8 @@ class PaymentListCreateView(generics.ListCreateAPIView):
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
         payment = serializer.save()
+        invalidate_cache_namespace("payments")
+        logger.info("payment_created", extra={"payment_id": str(payment.id)})
 
         # Return response with Postman-expected field names
         return Response(
@@ -114,17 +135,22 @@ class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsAuthenticated]
 
     def retrieve(self, request, *args, **kwargs):
+        cache_key = build_cache_key("payments", request, "detail")
+        cached_payload = get_cached_payload(cache_key)
+        if cached_payload is not None:
+            return Response(cached_payload)
+
         instance = self.get_object()
-        return Response(
-            {
-                "id": str(instance.id),
-                "registration": str(instance.registration.id),
-                "payment_method": instance.payment_method,
-                # capitalize for test expectations
-                "payment_status": instance.status.capitalize(),
-                "amount_paid": float(instance.amount),
-            }
-        )
+        payload = {
+            "id": str(instance.id),
+            "registration": str(instance.registration.id),
+            "payment_method": instance.payment_method,
+            # capitalize for test expectations
+            "payment_status": instance.status.capitalize(),
+            "amount_paid": float(instance.amount),
+        }
+        set_cached_payload(cache_key, payload, PAYMENTS_CACHE_TTL)
+        return Response(payload)
 
     def update(self, request, *args, **kwargs):
         data = (
@@ -158,8 +184,17 @@ class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
         serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
+        invalidate_cache_namespace("payments")
+        logger.info("payment_updated", extra={"payment_id": str(instance.id)})
         # return simplified mapping similar to retrieve
         return self.retrieve(request, *args, **kwargs)
+
+    def perform_destroy(self, instance):
+        payment_id = str(instance.id)
+        result = super().perform_destroy(instance)
+        invalidate_cache_namespace("payments")
+        logger.info("payment_deleted", extra={"payment_id": payment_id})
+        return result
 
     def get_serializer_class(self) -> Type[Serializer]:  # type: ignore[override]
         if self.request.method in ["PUT", "PATCH"]:
@@ -193,9 +228,16 @@ class PaymentDetailView(generics.RetrieveUpdateDestroyAPIView):
 @permission_classes([IsAuthenticated])
 def my_payments(request):
     """Get current user's payments"""
+    cache_key = build_cache_key("payments", request, "my")
+    cached_payload = get_cached_payload(cache_key)
+    if cached_payload is not None:
+        return Response(cached_payload)
+
     payments = Payment.objects.filter(user=request.user).order_by("-initiated_at")
     serializer = PaymentSerializer(payments, many=True)
-    return Response({"payments": serializer.data})
+    payload = {"payments": serializer.data}
+    set_cached_payload(cache_key, payload, PAYMENTS_CACHE_TTL)
+    return Response(payload)
 
 
 @api_view(["POST"])
@@ -243,6 +285,8 @@ def initiate_payment(request):
         payment_method=payment_method,
         status="pending",
     )
+    invalidate_cache_namespace("payments")
+    logger.info("payment_initiated", extra={"payment_id": str(payment.id)})
 
     serializer = PaymentSerializer(payment)
     return Response(serializer.data, status=status.HTTP_201_CREATED)
@@ -267,6 +311,12 @@ def update_payment_status(request, pk):
             transaction_id = serializer.validated_data.get("transaction_id")  # type: ignore[union-attr]
             gateway_response = serializer.validated_data.get("gateway_response")  # type: ignore[union-attr]
             payment.complete_payment(transaction_id, gateway_response)
+            try:
+                from payments.tasks import send_payment_confirmation_email
+
+                enqueue_task(send_payment_confirmation_email, str(payment.id))
+            except Exception:
+                logger.exception("payment_confirmation_task_failed")
         elif old_status in ["pending", "processing"] and new_status == "failed":
             gateway_response = serializer.validated_data.get("gateway_response")  # type: ignore[union-attr]
             payment.fail_payment(gateway_response=gateway_response)
@@ -283,6 +333,7 @@ def update_payment_status(request, pk):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        invalidate_cache_namespace("payments")
         return Response(
             {
                 "message": "Payment status updated successfully",
@@ -322,6 +373,8 @@ def refund_payment(request, pk):
             )
 
         payment.refund_payment(amount, reason)
+        invalidate_cache_namespace("payments")
+        logger.info("payment_refunded", extra={"payment_id": str(payment.id)})
 
         return Response(
             {

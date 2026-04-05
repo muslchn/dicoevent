@@ -1,0 +1,33 @@
+{
+  "include": [
+    "api/**/*.py",
+    "dicoevent_project/**/*.py",
+    "events/**/*.py",
+    "payments/**/*.py",
+    "registrations/**/*.py",
+    "tickets/**/*.py",
+    "users/**/*.py"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.*",
+    ".venv-1/**",
+    "venv/**",
+    ".venv/**",
+    "**/site-packages/**",
+    "node_modules/**",
+    "**/migrations/**",
+    "media/**",
+    "staticfiles/**",
+    "local/**",
+    "review/**",
+    "submission/**"
+  ],
+  "typeCheckingMode": "basic",
+  "reportAttributeAccessIssue": "none",
+  "reportAssignmentType": "none",
+  "reportArgumentType": "none",
+  "reportIncompatibleMethodOverride": "none",
+  "reportOperatorIssue": "none"
+}

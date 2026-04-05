@@ -5,3 +5,7 @@ psycopg2-binary
 python-decouple
 Pillow
 django-filter
+django-redis
+celery
+redis
+python-json-logger

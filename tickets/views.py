@@ -1,5 +1,6 @@
 import random
 import string
+import logging
 from typing import Type
 from rest_framework import generics, status  # type: ignore[import]
 from rest_framework.decorators import api_view, permission_classes  # type: ignore[import]
@@ -17,6 +18,9 @@ from .serializers import (
     TicketSerializer,
 )
 from users.permissions import CanManageTickets
+from api.cache_utils import invalidate_cache_namespace
+
+logger = logging.getLogger("tickets")
 
 
 class TicketTypeListCreateView(generics.ListCreateAPIView):
@@ -122,6 +126,32 @@ class TicketTypeDetailView(generics.RetrieveUpdateDestroyAPIView):
         if self.request.method in ["PUT", "PATCH"]:
             return TicketTypeUpdateSerializer
         return TicketTypeSerializer
+
+    def perform_destroy(self, instance):
+        registration_ids = list(instance.registrations.values_list("id", flat=True))
+        deleted_payment_count = 0
+        if registration_ids:
+            from payments.models import Payment
+
+            deleted_payment_count = Payment.objects.filter(
+                registration_id__in=registration_ids
+            ).count()
+
+        result = super().perform_destroy(instance)
+
+        # Deleting a ticket type cascades to registrations and payments.
+        invalidate_cache_namespace("tickets")
+        invalidate_cache_namespace("registrations")
+        invalidate_cache_namespace("payments")
+        logger.info(
+            "ticket_type_deleted",
+            extra={
+                "ticket_type_id": str(instance.id),
+                "deleted_registrations": len(registration_ids),
+                "deleted_payments": deleted_payment_count,
+            },
+        )
+        return result
 
 
 @api_view(["GET"])
