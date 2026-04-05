@@ -11,6 +11,9 @@ django-filter = "*"
 psycopg2-binary = "*"
 python-decouple = "*"
 pillow = "*"
+celery = "*"
+redis = "*"
+python-json-logger = "*"
 
 [dev-packages]
 pytest = "*"

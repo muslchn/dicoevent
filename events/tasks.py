@@ -7,7 +7,8 @@ from datetime import timedelta
 
 from django.utils import timezone
 
-from api.celery_compat import shared_task
+from celery import shared_task
+
 from events.models import Event
 from registrations.models import Registration
 

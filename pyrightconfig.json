@@ -11,10 +11,11 @@
   "exclude": [
     "**/__pycache__",
     "**/node_modules",
-    "**/.*",
+    ".git/**",
+    ".pytest_cache/**",
+    ".mypy_cache/**",
     ".venv-1/**",
     "venv/**",
-    ".venv/**",
     "**/site-packages/**",
     "node_modules/**",
     "**/migrations/**",
@@ -24,6 +25,9 @@
     "review/**",
     "submission/**"
   ],
+  "venvPath": ".",
+  "venv": ".venv",
+  "pythonVersion": "3.10",
   "typeCheckingMode": "basic",
   "reportAttributeAccessIssue": "none",
   "reportAssignmentType": "none",

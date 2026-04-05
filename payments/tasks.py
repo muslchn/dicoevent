@@ -7,7 +7,8 @@ import logging
 from django.conf import settings
 from django.core.mail import send_mail
 
-from api.celery_compat import shared_task
+from celery import shared_task
+
 from payments.models import Payment
 
 logger = logging.getLogger("payments")

@@ -9,7 +9,7 @@ DicoEvent is a Django REST API for event management. The current codebase provid
 - media file storage for event poster images
 - API request/response logging middleware with rotating log files
 - cache-backed read paths with namespace invalidation on write operations
-- optional Celery-compatible async task hooks (sync fallback when Celery worker is absent)
+- Celery async task hooks (Redis broker required; tasks run in the background)
 - deterministic local seeding and Newman/Postman test execution
 
 This README documents only what is implemented and active in this repository today.
@@ -25,7 +25,7 @@ This README documents only what is implemented and active in this repository tod
 | PostgreSQL | Primary database |
 | `python-decouple` | Environment variable loading |
 | `django-filter` | Query filtering |
-| `django-redis` | Optional Redis cache backend |
+| `redis` | Redis client library (cache backend + Celery broker) |
 | Celery + Redis | Optional async task worker/broker |
 | `python-json-logger` | Structured log formatting |
 | Newman | Postman collection runner |
@@ -74,6 +74,7 @@ Notes:
 
 - Python 3.10 or newer
 - PostgreSQL 13 or newer
+- **Redis 6 or newer** (required — used for both the cache layer and the Celery task broker)
 - `pipenv` (recommended) or `pip`
 - Node.js with Newman installed globally to run the Postman collection
 
@@ -226,13 +227,13 @@ JWT_ACCESS_TOKEN_LIFETIME_HOURS=3
 Optional variables (defaults are handled in [settings.py](dicoevent_project/settings.py)):
 
 ```env
-# Cache backend ("locmem" by default; set to "redis" for Redis-backed cache)
-CACHE_BACKEND=locmem
+# Redis — required for both the cache layer and the Celery broker.
+# Ensure a Redis server is running before starting the application.
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 REDIS_DB=1
 
-# Celery async task broker (sync fallback is used when no broker is available)
+# Celery async task broker (uses the same Redis instance by default)
 CELERY_BROKER_URL=redis://127.0.0.1:6379/0
 CELERY_RESULT_BACKEND=redis://127.0.0.1:6379/0
 
@@ -454,7 +455,7 @@ If you use [run-newman-fixed.js](run-newman-fixed.js) instead, create `/home/ara
 
 - The default collection and environment paths hard-coded in [run-newman-fixed.js](run-newman-fixed.js) and [scripts/run_newman.py](scripts/run_newman.py) point to Version 1 assets. Always pass explicit `--collection` and `--environment` arguments when targeting Version 2, as shown in the examples above.
 - [scripts](scripts) currently contains only [run_newman.py](scripts/run_newman.py). The Makefile targets `readme`, `doc-links`, and `docs` reference helper scripts (`validate_readme.py`, `check_doc_links.py`) that are not present yet; those targets will fail until the scripts are added.
-- Celery async tasks require a running Redis broker. When no broker is available, `api/celery_compat.py` executes tasks synchronously so the API remains functional without any additional infrastructure.
+- Celery async tasks require Redis as the broker. Start Redis before running the API server or the Celery worker. All task files import `shared_task` directly from `celery`.
 - The `media/` directory at the project root stores uploaded event poster images. It is tracked in version control via a `.gitkeep` placeholder. In production, configure a persistent storage backend instead of the local filesystem.
 
 ## Useful Make Targets
@@ -486,8 +487,9 @@ Additional project documentation is available under [docs](docs):
 
 ## Current Scope
 
-This README documents only components that are either active by default or already wired with optional runtime backends in code:
+This README documents only components that are either active by default or already wired in code:
 
-- Caching and structured logging are active in current settings.
-- Celery configuration and task hooks exist, but a running worker and broker are optional for local API execution.
+- Caching uses Django’s built-in `RedisCache` backend only (`django.core.cache.backends.redis.RedisCache`) — a running Redis server is required.
+- Celery is configured and all async tasks use `@shared_task` from the `celery` package directly. A Celery worker process is required for background task execution.
+- Structured logging is active for all app modules.
 - Docker Compose orchestration, Sentry, Stripe, and alternate Django settings modules are not part of the current local workflow described here.

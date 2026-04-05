@@ -167,39 +167,18 @@ SIMPLE_JWT = {
     "USER_ID_CLAIM": "user_id",
 }
 
-# Caching configuration
-CACHE_BACKEND = config("CACHE_BACKEND", default="locmem")
-if CACHE_BACKEND == "redis":
-    redis_host = config("REDIS_HOST", default="127.0.0.1")
-    redis_port = config("REDIS_PORT", default="6379")
-    redis_db = config("REDIS_DB", default="1")
-    CACHES = {
-        "default": {
-            "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": f"redis://{redis_host}:{redis_port}/{redis_db}",
-            "TIMEOUT": 300,
-            "OPTIONS": {
-                "CLIENT_CLASS": "django_redis.client.DefaultClient",
-                "IGNORE_EXCEPTIONS": True,
-            },
-        }
+# Caching configuration — requires a running Redis instance.
+# Uses Django's built-in Redis backend (no extra libraries required beyond redis-py).
+redis_host = config("REDIS_HOST", default="127.0.0.1")
+redis_port = config("REDIS_PORT", default="6379")
+redis_db = config("REDIS_DB", default="1")
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.redis.RedisCache",
+        "LOCATION": f"redis://{redis_host}:{redis_port}/{redis_db}",
+        "TIMEOUT": 300,
     }
-elif DEBUG:
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-            "LOCATION": "dicoevent-local-cache",
-            "TIMEOUT": 300,
-        }
-    }
-else:
-    CACHES = {
-        "default": {
-            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-            "LOCATION": "dicoevent-prod-cache",
-            "TIMEOUT": 300,
-        }
-    }
+}
 
 # Logging configuration
 LOGS_DIR = BASE_DIR / "logs"

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import logging
 
-from api.celery_compat import shared_task
+from celery import shared_task
+
 from registrations.models import Registration
 from tickets.models import Ticket
 
