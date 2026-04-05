@@ -3,8 +3,10 @@ from rest_framework.decorators import api_view, permission_classes  # type: igno
 from rest_framework.permissions import IsAuthenticated  # type: ignore[import]
 from rest_framework.response import Response  # type: ignore[import]
 from django.shortcuts import get_object_or_404  # type: ignore[import]
+from django.core.paginator import Paginator
 from django_filters.rest_framework import DjangoFilterBackend  # type: ignore[import]
 from rest_framework import filters  # type: ignore[import]
+from PIL import Image, UnidentifiedImageError
 from .models import Event
 from .serializers import EventSerializer, EventCreateSerializer, EventUpdateSerializer
 from users.permissions import CanManageEvents, IsOrganizerOrAdmin
@@ -29,11 +31,17 @@ class EventListCreateView(generics.ListCreateAPIView):
     def list(self, request, *args, **kwargs):
         """Override to return paginated object format with results array"""
         queryset = self.filter_queryset(self.get_queryset())
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            # Return under `events` key to match Postman
-            return Response({"events": serializer.data})
+        if self.paginator is not None:
+            # Gracefully normalize invalid/high page numbers to a valid page.
+            page_size = self.paginator.get_page_size(request)
+            if page_size:
+                paginator = Paginator(queryset, page_size)
+                page_number = request.query_params.get(
+                    self.paginator.page_query_param, 1
+                )
+                page = paginator.get_page(page_number)
+                serializer = self.get_serializer(page.object_list, many=True)
+                return Response({"events": serializer.data})
 
         serializer = self.get_serializer(queryset, many=True)
         return Response({"events": serializer.data})
@@ -92,6 +100,20 @@ class EventListCreateView(generics.ListCreateAPIView):
             data["city"] = "Unknown"
         if "country" not in data:
             data["country"] = "Unknown"
+
+        # Fix date ordering if end_date is before start_date
+        start_date_val = data.get("start_date")
+        end_date_val = data.get("end_date")
+        if start_date_val and end_date_val:
+            if isinstance(start_date_val, str):
+                start_date_val = datetime.fromisoformat(start_date_val)
+            if isinstance(end_date_val, str):
+                end_date_val = datetime.fromisoformat(end_date_val)
+
+            if end_date_val < start_date_val:
+                # Swap the dates
+                data["start_date"] = end_date_val.isoformat()
+                data["end_date"] = start_date_val.isoformat()
 
         serializer = self.get_serializer(data=data)
         if not serializer.is_valid():
@@ -193,6 +215,19 @@ class EventDetailView(generics.RetrieveUpdateDestroyAPIView):
         # ignore organizer_id on update so it doesn't trigger validation errors
         if "organizer_id" in data:
             data.pop("organizer_id")
+
+        # Fix date ordering if end_date is before start_date
+        start_date_val = data.get("start_date", instance.start_date)
+        end_date_val = data.get("end_date", instance.end_date)
+        if isinstance(start_date_val, str):
+            start_date_val = datetime.fromisoformat(start_date_val)
+        if isinstance(end_date_val, str):
+            end_date_val = datetime.fromisoformat(end_date_val)
+
+        if end_date_val < start_date_val:
+            # Swap the dates
+            data["start_date"] = end_date_val.isoformat()
+            data["end_date"] = start_date_val.isoformat()
 
         serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
@@ -301,3 +336,60 @@ def cancel_event(request, pk):
             {"error": "Event cannot be cancelled in its current status"},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def upload_event_poster(request):
+    """Upload poster image for an event."""
+    event_id = request.data.get("event")
+    image_file = request.FILES.get("image")
+
+    if not event_id:
+        return Response(
+            {"error": "Event is required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if not image_file:
+        return Response(
+            {"error": "Image is required"}, status=status.HTTP_400_BAD_REQUEST
+        )
+
+    event = get_object_or_404(Event, pk=event_id)
+
+    max_size_bytes = 500 * 1024
+    if image_file.size > max_size_bytes:
+        return Response(
+            {"error": "Image is too large. Maximum size is 500KB"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        image_file.seek(0)
+        Image.open(image_file).verify()
+        image_file.seek(0)
+    except (UnidentifiedImageError, OSError, ValueError):
+        return Response(
+            {"error": "Uploaded file must be a valid image"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    event.image = image_file
+    event.save(update_fields=["image", "updated_at"])
+
+    return Response(
+        {"id": str(event.id), "image": str(event.image)},
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def get_event_poster(request, pk):
+    """Get poster metadata for an event."""
+    event = get_object_or_404(Event, pk=pk)
+
+    if not event.image:
+        return Response([])
+
+    return Response([{"id": str(event.id), "image": str(event.image)}])

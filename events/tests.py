@@ -6,9 +6,12 @@ from typing import Any, cast
 from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
+from PIL import Image
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.test import APIClient
+from io import BytesIO
+from django.core.files.uploadedfile import SimpleUploadedFile
 
 from events.models import Event
 from users.models import User
@@ -135,3 +138,111 @@ class EventApiTests(TestCase):
         self.assertEqual(self.event.title, "Admin Updated Event")
         self.assertEqual(self.event.venue, "Updated Venue")
         self.assertEqual(self.event.capacity, 150)
+
+    def _build_image_upload(
+        self, filename: str, size: tuple[int, int]
+    ) -> SimpleUploadedFile:
+        image_io = BytesIO()
+        image = Image.new("RGB", size, color="white")
+        image.save(image_io, format="JPEG", quality=95)
+        image_io.seek(0)
+        return SimpleUploadedFile(filename, image_io.read(), content_type="image/jpeg")
+
+    def test_superuser_can_upload_event_poster(self):
+        superuser = User.objects.create_user(
+            username="superuser",
+            email="superuser@example.com",
+            password="SuperUserPass123!",
+            role="superuser",
+            is_superuser=True,
+            is_staff=True,
+        )
+        self.api_client.force_authenticate(user=superuser)
+
+        image_file = self._build_image_upload("poster-small.jpg", (100, 100))
+        response = cast(
+            Response,
+            self.api_client.post(
+                reverse("event-poster-upload"),
+                {"event": str(self.event.id), "image": image_file},
+                format="multipart",
+            ),
+        )
+
+        self.event.refresh_from_db()
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        response_data = self.response_data(response)
+        self.assertIn("id", response_data)
+        self.assertIn("image", response_data)
+        self.assertTrue(response_data["image"])
+        self.assertTrue(bool(self.event.image))
+
+    def test_upload_event_poster_rejects_non_image(self):
+        self.api_client.force_authenticate(user=self.admin_user)
+
+        non_image_file = SimpleUploadedFile(
+            "not-image.txt", b"this-is-not-an-image", content_type="text/plain"
+        )
+        response = cast(
+            Response,
+            self.api_client.post(
+                reverse("event-poster-upload"),
+                {"event": str(self.event.id), "image": non_image_file},
+                format="multipart",
+            ),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_upload_event_poster_rejects_large_image(self):
+        self.api_client.force_authenticate(user=self.admin_user)
+
+        large_image = SimpleUploadedFile(
+            "poster-large.jpg",
+            b"0" * (600 * 1024),
+            content_type="image/jpeg",
+        )
+        response = cast(
+            Response,
+            self.api_client.post(
+                reverse("event-poster-upload"),
+                {"event": str(self.event.id), "image": large_image},
+                format="multipart",
+            ),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_authenticated_user_can_get_event_poster(self):
+        self.api_client.force_authenticate(user=self.organizer)
+
+        existing_poster = self._build_image_upload("existing-poster.jpg", (128, 128))
+        self.event.image.save(existing_poster.name, existing_poster, save=False)
+        self.event.save(update_fields=["image", "updated_at"])
+
+        response = cast(
+            Response,
+            self.api_client.get(
+                reverse("event-poster-detail", kwargs={"pk": self.event.pk})
+            ),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        response_data = self.response_data(response)
+        self.assertIsInstance(response_data, list)
+        self.assertGreaterEqual(len(response_data), 1)
+
+    def test_events_list_out_of_range_page_returns_valid_page_payload(self):
+        self.api_client.force_authenticate(user=self.organizer)
+
+        response = cast(
+            Response,
+            self.api_client.get(f"{reverse('event-list-create')}?page=100"),
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        response_data = self.response_data(response)
+        self.assertIn("events", response_data)
+        self.assertIsInstance(response_data["events"], list)
+        self.assertGreaterEqual(len(response_data["events"]), 1)

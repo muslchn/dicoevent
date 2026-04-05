@@ -35,7 +35,8 @@ dicoevent/
 ├── tickets/
 ├── users/
 ├── docs/
-├── DicoEvent_Versi_1_Postman/
+├── [788] DicoEvent Versi 1 Postman/
+├── [788] DicoEvent Versi 2 Postman/
 ├── create_initial_data.py
 ├── initialize_test_data.py
 ├── setup_test_data.py
@@ -53,7 +54,7 @@ Notes:
 
 - The active Django settings module is [dicoevent_project/settings.py](dicoevent_project/settings.py).
 - There is no root-level `docker-compose.yml` in this repository.
-- The Postman collection is kept under [DicoEvent_Versi_1_Postman](DicoEvent_Versi_1_Postman).
+- Postman assets are kept under [Postman Version 1 folder]([788]%20DicoEvent%20Versi%201%20Postman) and [Postman Version 2 folder]([788]%20DicoEvent%20Versi%202%20Postman).
 
 ## Prerequisites
 
@@ -61,6 +62,12 @@ Notes:
 - PostgreSQL 13 or newer
 - `pip` or `pipenv`
 - Node.js with Newman installed if you want to run the Postman collection
+
+Optional Newman installation (global):
+
+```bash
+npm install -g newman
+```
 
 ## Environment Configuration
 
@@ -90,7 +97,6 @@ JWT_ACCESS_TOKEN_LIFETIME_HOURS=3
 Local Newman helpers additionally use:
 
 ```env
-
 POSTMAN_HOST=localhost
 POSTMAN_PORT=8000
 NEW_USERNAME=DicodingIndonesia
@@ -155,6 +161,39 @@ or:
 make run
 ```
 
+## Quick Start (Without Docker)
+
+This is the recommended local flow for this repository:
+
+```bash
+# 1) activate local virtualenv
+source venv/bin/activate
+
+# 2) apply schema
+python manage.py migrate
+
+# 3) load deterministic baseline data
+python initialize_test_data.py
+
+# 4) run API
+python manage.py runserver 0.0.0.0:8000
+```
+
+In another terminal, run Newman against Version 2 assets:
+
+```bash
+python scripts/run_newman.py \
+    --collection "./[788] DicoEvent Versi 2 Postman/[788] DicoEvent versi 2.postman_collection.json" \
+    --environment "./[788] DicoEvent Versi 2 Postman/[788] DicoEvent.postman_environment.json" \
+    --timeout-request 60000
+```
+
+Quick API readiness check:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8000/api/events/
+```
+
 ## Seed Scripts
 
 This repository contains three seed helpers:
@@ -179,6 +218,12 @@ or:
 make djtest
 ```
 
+If `pytest` is installed in your active environment, this also works:
+
+```bash
+pytest
+```
+
 Run the full local API validation workflow (database reset, seed, server startup, Newman run, summary):
 
 ```bash
@@ -195,7 +240,29 @@ Generate a standalone summary from the latest Newman JSON report:
 
 ## Newman / Postman
 
-Run the collection through the Make target:
+Preferred: run the Python wrapper directly with explicit collection and environment paths.
+
+Version 1:
+
+```bash
+python scripts/run_newman.py \
+    --collection "./[788] DicoEvent Versi 1 Postman/[788] DicoEvent versi 1.postman_collection.json" \
+    --environment "./[788] DicoEvent Versi 1 Postman/[788] DicoEvent.postman_environment.json" \
+    --timeout-request 60000
+```
+
+Version 2:
+
+```bash
+python scripts/run_newman.py \
+    --collection "./[788] DicoEvent Versi 2 Postman/[788] DicoEvent versi 2.postman_collection.json" \
+    --environment "./[788] DicoEvent Versi 2 Postman/[788] DicoEvent.postman_environment.json" \
+    --timeout-request 60000
+```
+
+The direct wrapper expects the Django server to already be running.
+
+You can also run the Make target:
 
 ```bash
 make postman
@@ -211,17 +278,15 @@ Unlike [test-suite.sh](test-suite.sh), `make postman` does not start Django for 
 
 The Python Newman wrapper uses a temporary copy of the checked-in Postman collection so `{{host}}` and `{{port}}` placeholders inside embedded `pm.sendRequest(...)` scripts resolve correctly, and so the user-update request stays aligned with the collection's `{{newUsername}}` assertion, without modifying the original Postman files.
 
-Best-practice rule for this repository: do not edit files inside [DicoEvent_Versi_1_Postman](DicoEvent_Versi_1_Postman) to fix runtime variable resolution.
+Best-practice rule for this repository: do not edit files inside [Postman Version 1 folder]([788]%20DicoEvent%20Versi%201%20Postman) or [Postman Version 2 folder]([788]%20DicoEvent%20Versi%202%20Postman) to fix runtime variable resolution.
 
-For the all-in-one local run, [test-suite.sh](test-suite.sh) uses the Node wrapper [run-newman-fixed.js](run-newman-fixed.js), which starts Django, runs Newman, and prints the parsed summary.
+For the all-in-one local run, [test-suite.sh](test-suite.sh) uses the Node wrapper [run-newman-fixed.js](run-newman-fixed.js), which starts Django, runs Newman, and prints the parsed summary. Because it also references legacy `DicoEvent_Versi_1_Postman/...` paths today, verify/update those paths before relying on it in this workspace.
 
-You can also run the wrapper directly:
+## Known Local Caveats
 
-```bash
-python scripts/run_newman.py --timeout-request 60000
-```
-
-The direct wrapper also expects the Django server to already be running.
+- [scripts/run_newman.py](scripts/run_newman.py), [Makefile](Makefile), [test-suite.sh](test-suite.sh), and [run-newman-fixed.js](run-newman-fixed.js) still contain legacy default paths (`DicoEvent_Versi_1_Postman/...`).
+- The checked-in folders in this workspace are [Postman Version 1 folder]([788]%20DicoEvent%20Versi%201%20Postman) and [Postman Version 2 folder]([788]%20DicoEvent%20Versi%202%20Postman).
+- For reliable local execution without editing collection files, always pass explicit `--collection` and `--environment` values to [scripts/run_newman.py](scripts/run_newman.py), as shown above.
 
 ## Useful Make Targets
 
@@ -236,7 +301,7 @@ make djtest
 make postman
 ```
 
-The source for these commands is [Makefile](Makefile).
+The source for these commands is [Makefile](Makefile). Additional targets in the Makefile may reference helper scripts that are not currently present in [scripts](scripts).
 
 ## Documentation
 
